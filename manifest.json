@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "事实笔记本",
+  "name": "知识笔记",
   "version": "1.0.0",
-  "description": "用于阅读网页/帖子时保存网址、文本和图片的事实笔记工具",
+  "description": "用于阅读网页/帖子时保存网址、文本和图片的知识笔记工具",
   "permissions": [
     "storage",
     "activeTab",
@@ -37,7 +37,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sidebar.html", "sidebar.css", "sidebar.js", "storage.js"],
+      "resources": ["sidebar.html", "sidebar.css", "sidebar.js", "storage.js", "image-storage.js", "error-handler.js", "common.js"],
       "matches": ["<all_urls>"]
     }
   ]

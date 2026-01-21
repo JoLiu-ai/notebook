@@ -2,12 +2,12 @@
 
 // 安装时的初始化
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('事实笔记本插件已安装');
+  console.log('知识笔记插件已安装');
   
   // 创建右键菜单
   chrome.contextMenus.create({
     id: "saveToNote",
-    title: "保存到事实笔记本",
+    title: "保存到知识笔记",
     contexts: ["selection", "image", "link"]
   });
 });
@@ -111,7 +111,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       chrome.notifications?.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
-        title: '事实笔记本',
+        title: '知识笔记',
         message: '已保存到笔记'
       });
     } catch (error) {

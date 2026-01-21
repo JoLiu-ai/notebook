@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>事实笔记本</title>
+  <title>知识笔记</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <header class="header">
-      <h1>📝 事实笔记本</h1>
+      <h1>📝 知识笔记</h1>
       <div class="header-actions">
         <button id="exportBtn" class="btn-icon" title="导出数据">📥</button>
-        <button id="addNoteBtn" class="btn-primary">+ 添加笔记</button>
+        <button id="addNoteBtn" class="btn-icon" title="添加笔记">+</button>
       </div>
     </header>
 
@@ -51,6 +51,18 @@
           <textarea id="noteText" rows="6" placeholder="输入或粘贴文本内容..."></textarea>
         </div>
         <div class="form-group">
+          <label for="noteCategory">分类</label>
+          <input type="text" id="noteCategory" placeholder="输入分类（可选）" list="categoryList">
+          <datalist id="categoryList"></datalist>
+        </div>
+        <div class="form-group">
+          <label for="noteTags">标签</label>
+          <div class="tags-input-container">
+            <input type="text" id="noteTagsInput" placeholder="输入标签，按回车添加" class="tags-input">
+            <div class="tags-display" id="tagsDisplay"></div>
+          </div>
+        </div>
+        <div class="form-group">
           <label>图片</label>
           <div class="image-upload-area" id="imageUploadArea">
             <input type="file" id="imageInput" accept="image/*" multiple style="display: none;">
@@ -74,15 +86,14 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="viewNoteTitle"></h2>
-        <button class="close-btn" id="closeViewModal">&times;</button>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="editNoteBtn">编辑</button>
+          <button class="btn-danger" id="deleteNoteBtn">删除</button>
+          <button class="btn-secondary" id="closeViewBtn">关闭</button>
+        </div>
       </div>
       <div class="modal-body" id="viewNoteBody">
         <!-- 笔记详情将在这里显示 -->
-      </div>
-      <div class="modal-footer">
-        <button class="btn-danger" id="deleteNoteBtn">删除</button>
-        <button class="btn-secondary" id="editNoteBtn" style="display: none;">编辑</button>
-        <button class="btn-secondary" id="closeViewBtn">关闭</button>
       </div>
     </div>
   </div>
@@ -123,6 +134,9 @@
   </div>
 
   <script src="storage.js"></script>
+  <script src="image-storage.js"></script>
+  <script src="error-handler.js"></script>
+  <script src="common.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
