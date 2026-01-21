@@ -93,8 +93,11 @@
           <label for="noteUrl">网址</label>
           <input type="text" id="noteUrl" placeholder="自动填充当前页面网址">
         </div>
-        <div class="form-group">
-          <label for="noteText">文本内容</label>
+        <div class="form-group form-group-textarea">
+          <div class="textarea-header">
+            <label for="noteText">文本内容</label>
+            <button type="button" id="toggleTextExpandBtn" class="text-expand-btn" aria-pressed="false">展开</button>
+          </div>
           <textarea id="noteText" rows="10" placeholder="输入或粘贴文本内容..."></textarea>
         </div>
         <div class="form-group">

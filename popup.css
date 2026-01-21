@@ -265,6 +265,9 @@ body {
   box-sizing: border-box;
   /* 为滚动条预留空间，确保左右对齐 */
   scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .modal-footer {
@@ -276,6 +279,16 @@ body {
 }
 
 .form-group {
+  margin-bottom: 16px;
+  flex-shrink: 0; /* 默认不收缩 */
+}
+
+/* 文本内容区域展开占满剩余空间 */
+.form-group-textarea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   margin-bottom: 16px;
 }
 
@@ -301,6 +314,13 @@ body {
 
 .form-group textarea {
   resize: vertical;
+}
+
+/* 文本内容 textarea 展开占满可用空间 */
+.form-group-textarea textarea {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .image-upload-area {

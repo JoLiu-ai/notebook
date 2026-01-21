@@ -5,6 +5,8 @@ let selectedImages = [];
 let isResizing = false;
 let sidebarWidth = 400;
 let sidebarPosition = 'right'; // 'left' or 'right'
+let autoSaveTimer = null; // 自动保存定时器
+let isTextExpanded = false; // 文本内容展开状态
 
 // DOM 元素
 const sidebarContainer = document.getElementById('sidebarContainer');
@@ -34,6 +36,7 @@ const libraryView = document.getElementById('libraryView');
 const noteTitle = document.getElementById('noteTitle');
 const noteUrl = document.getElementById('noteUrl');
 const noteText = document.getElementById('noteText');
+const toggleTextExpandBtn = document.getElementById('toggleTextExpandBtn');
 const imageInput = document.getElementById('imageInput');
 const selectImageBtn = document.getElementById('selectImageBtn');
 const imagePreview = document.getElementById('imagePreview');
@@ -238,7 +241,7 @@ function setupEventListeners() {
 
   // 导出数据按钮
   exportBtn.addEventListener('click', async () => {
-    await exportData();
+    await showExportFormatDialog();
   });
 
   // 搜索
@@ -254,8 +257,28 @@ function setupEventListeners() {
 
   // 保存笔记
   saveNoteBtn.addEventListener('click', async () => {
+    // 清除自动保存定时器
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = null;
+    }
     await saveNote();
   });
+
+  // 自动保存（防抖）- 监听文本内容输入
+  noteText.addEventListener('input', () => {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(async () => {
+      await autoSaveNote();
+    }, 2000); // 2秒后自动保存
+  });
+
+  // 文本内容展开/收起
+  if (toggleTextExpandBtn) {
+    toggleTextExpandBtn.addEventListener('click', () => {
+      setTextExpandState(!isTextExpanded);
+    });
+  }
 
   // 删除笔记
   deleteNoteBtn.addEventListener('click', async () => {
@@ -315,6 +338,16 @@ function setupEventListeners() {
       closeViewNoteModal();
     }
   });
+}
+
+// 设置文本内容展开状态
+function setTextExpandState(expanded) {
+  isTextExpanded = expanded;
+  addNoteModal.classList.toggle('expand-text', expanded);
+  if (toggleTextExpandBtn) {
+    toggleTextExpandBtn.textContent = expanded ? '收起' : '展开';
+    toggleTextExpandBtn.setAttribute('aria-pressed', String(expanded));
+  }
 }
 
 // 切换视图
@@ -485,6 +518,7 @@ function createNoteCard(note) {
 // 打开添加笔记模态框
 function openAddNoteModal(note = null) {
   addNoteModal.classList.add('show');
+  setTextExpandState(false);
   
   if (note) {
     // 编辑模式
@@ -547,6 +581,12 @@ async function editNote(noteId) {
 
 // 关闭添加笔记模态框
 function closeAddNoteModal() {
+  // 清除自动保存定时器
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+  setTextExpandState(false);
   addNoteModal.classList.remove('show');
   // 清空表单
   noteTitle.value = '';
@@ -616,6 +656,86 @@ async function saveNote() {
   } catch (error) {
     console.error('保存笔记失败:', error);
     alert('保存失败，请重试');
+  }
+}
+
+// 自动保存笔记（静默保存，不关闭模态框）
+async function autoSaveNote() {
+  const title = noteTitle.value.trim();
+  const url = noteUrl.value.trim();
+  const text = noteText.value.trim();
+
+  // 如果没有任何内容，不保存
+  if (!title && !text && selectedImages.length === 0) {
+    return;
+  }
+
+  try {
+    // 将新选择的图片转换为 base64
+    const newImages = await Promise.all(
+      selectedImages.map(file => fileToBase64(file))
+    );
+
+    let finalImages = newImages;
+
+    // 如果是编辑模式，保留未替换的原有图片
+    if (currentViewingNoteId) {
+      const existingNote = await storage.getNote(currentViewingNoteId);
+      if (existingNote && existingNote.images && existingNote.images.length > 0) {
+        if (newImages.length > 0) {
+          finalImages = newImages;
+        } else {
+          finalImages = existingNote.images;
+        }
+      }
+    }
+
+    // 如果是新建笔记且还没有 ID，生成一个临时 ID
+    let noteId = currentViewingNoteId;
+    if (!noteId) {
+      noteId = 'temp_' + Date.now();
+      currentViewingNoteId = noteId;
+    }
+
+    const note = {
+      id: noteId,
+      title: title || '无标题',
+      url: url,
+      text: text,
+      images: finalImages,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (!currentViewingNoteId || currentViewingNoteId.startsWith('temp_')) {
+      // 检查是否已有创建时间
+      const existingNote = await storage.getNote(noteId);
+      if (existingNote && existingNote.createdAt) {
+        note.createdAt = existingNote.createdAt;
+      } else {
+        note.createdAt = new Date().toISOString();
+      }
+    } else {
+      const existingNote = await storage.getNote(currentViewingNoteId);
+      if (existingNote) {
+        note.createdAt = existingNote.createdAt;
+      } else {
+        note.createdAt = new Date().toISOString();
+      }
+    }
+
+    await storage.saveNote(note);
+    // 更新 currentViewingNoteId 为保存后的 ID（如果是新建）
+    if (currentViewingNoteId && currentViewingNoteId.startsWith('temp_')) {
+      currentViewingNoteId = note.id;
+    }
+    // 静默刷新笔记列表，不关闭模态框
+    await loadNotes();
+    if (libraryView.classList.contains('active') || !libraryView.classList.contains('hidden')) {
+      loadLibraryView();
+    }
+  } catch (error) {
+    console.error('自动保存笔记失败:', error);
+    // 自动保存失败时不显示错误提示，避免打扰用户
   }
 }
 
@@ -921,8 +1041,40 @@ async function importData() {
   }
 }
 
-// 导出数据
-async function exportData() {
+// 显示导出格式选择对话框
+async function showExportFormatDialog() {
+  const format = prompt(
+    '请选择导出格式：\n\n' +
+    '1. JSON - 原始数据格式（支持导入）\n' +
+    '2. Markdown - Markdown 格式\n' +
+    '3. PDF - PDF 文档\n' +
+    '4. DOCX - Word 文档\n\n' +
+    '请输入数字 (1-4):',
+    '1'
+  );
+
+  if (!format) return;
+
+  switch (format.trim()) {
+    case '1':
+      await exportToJSON();
+      break;
+    case '2':
+      await exportToMarkdown();
+      break;
+    case '3':
+      await exportToPDF();
+      break;
+    case '4':
+      await exportToDOCX();
+      break;
+    default:
+      alert('无效的格式选择');
+  }
+}
+
+// 导出为 JSON
+async function exportToJSON() {
   try {
     const notes = await storage.getAllNotes();
     
@@ -984,3 +1136,260 @@ async function exportData() {
   }
 }
 
+// 导出为 Markdown
+async function exportToMarkdown() {
+  try {
+    const notes = await storage.getAllNotes();
+    
+    if (notes.length === 0) {
+      alert('没有可导出的笔记');
+      return;
+    }
+
+    let markdown = `# 事实笔记本导出\n\n`;
+    markdown += `**导出时间**: ${new Date().toLocaleString('zh-CN')}\n`;
+    markdown += `**笔记总数**: ${notes.length}\n\n`;
+    markdown += `---\n\n`;
+
+    notes.forEach((note, index) => {
+      markdown += `## ${index + 1}. ${note.title || '无标题'}\n\n`;
+      
+      if (note.url) {
+        markdown += `**来源**: [${note.url}](${note.url})\n\n`;
+      }
+      
+      if (note.text) {
+        markdown += `### 内容\n\n`;
+        markdown += `${note.text}\n\n`;
+      }
+      
+      if (note.images && note.images.length > 0) {
+        markdown += `### 图片 (${note.images.length} 张)\n\n`;
+        note.images.forEach((imageData, imgIndex) => {
+          // Markdown 中直接嵌入 base64 图片
+          markdown += `![图片 ${imgIndex + 1}](${imageData})\n\n`;
+        });
+      }
+      
+      if (note.createdAt) {
+        markdown += `**创建时间**: ${new Date(note.createdAt).toLocaleString('zh-CN')}\n`;
+      }
+      if (note.updatedAt) {
+        markdown += `**更新时间**: ${new Date(note.updatedAt).toLocaleString('zh-CN')}\n`;
+      }
+      
+      markdown += `\n---\n\n`;
+    });
+
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fact-notebook-export-${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('导出失败:', error);
+    alert('导出失败，请重试');
+  }
+}
+
+// 导出为 PDF
+async function exportToPDF() {
+  try {
+    const notes = await storage.getAllNotes();
+    
+    if (notes.length === 0) {
+      alert('没有可导出的笔记');
+      return;
+    }
+
+    // 创建打印用的 HTML 内容
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>事实笔记本导出</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+          }
+          h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+          h2 { color: #555; margin-top: 30px; }
+          h3 { color: #666; }
+          .note { margin-bottom: 40px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; }
+          .url { color: #667eea; word-break: break-all; }
+          .meta { color: #999; font-size: 12px; margin-top: 10px; }
+          img { max-width: 100%; height: auto; margin: 10px 0; }
+          .page-break { page-break-after: always; }
+        </style>
+      </head>
+      <body>
+        <h1>事实笔记本导出</h1>
+        <p><strong>导出时间</strong>: ${new Date().toLocaleString('zh-CN')}</p>
+        <p><strong>笔记总数</strong>: ${notes.length}</p>
+        <hr>
+    `;
+
+    notes.forEach((note, index) => {
+      htmlContent += `<div class="note ${index > 0 ? 'page-break' : ''}">`;
+      htmlContent += `<h2>${index + 1}. ${escapeHtml(note.title || '无标题')}</h2>`;
+      
+      if (note.url) {
+        htmlContent += `<p class="url"><strong>来源</strong>: <a href="${escapeHtml(note.url)}">${escapeHtml(note.url)}</a></p>`;
+      }
+      
+      if (note.text) {
+        htmlContent += `<h3>内容</h3>`;
+        htmlContent += `<div>${note.text.replace(/\n/g, '<br>')}</div>`;
+      }
+      
+      if (note.images && note.images.length > 0) {
+        htmlContent += `<h3>图片 (${note.images.length} 张)</h3>`;
+        note.images.forEach((imageData) => {
+          htmlContent += `<img src="${imageData}" alt="图片">`;
+        });
+      }
+      
+      htmlContent += `<div class="meta">`;
+      if (note.createdAt) {
+        htmlContent += `创建时间: ${new Date(note.createdAt).toLocaleString('zh-CN')} `;
+      }
+      if (note.updatedAt) {
+        htmlContent += `更新时间: ${new Date(note.updatedAt).toLocaleString('zh-CN')}`;
+      }
+      htmlContent += `</div>`;
+      htmlContent += `</div>`;
+    });
+
+    htmlContent += `</body></html>`;
+
+    // 打开新窗口并打印
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    // 等待内容加载后打印
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    };
+  } catch (error) {
+    console.error('导出失败:', error);
+    alert('导出失败，请重试');
+  }
+}
+
+// 导出为 DOCX
+async function exportToDOCX() {
+  try {
+    const notes = await storage.getAllNotes();
+    
+    if (notes.length === 0) {
+      alert('没有可导出的笔记');
+      return;
+    }
+
+    // DOCX 文件实际上是 ZIP 文件，包含 XML
+    // 这里我们创建一个简单的 HTML 文件，用户可以在 Word 中打开并另存为 DOCX
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:w="urn:schemas-microsoft-com:office:word"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="ProgId" content="Word.Document">
+        <meta name="Generator" content="Microsoft Word">
+        <meta name="Originator" content="Microsoft Word">
+        <title>事实笔记本导出</title>
+        <style>
+          @page {
+            size: A4;
+            margin: 2.5cm;
+          }
+          body {
+            font-family: 'Microsoft YaHei', SimSun, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+          }
+          h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+          h2 { color: #555; margin-top: 30px; }
+          h3 { color: #666; }
+          .note { margin-bottom: 40px; }
+          .url { color: #667eea; word-break: break-all; }
+          .meta { color: #999; font-size: 10pt; margin-top: 10px; }
+          img { max-width: 100%; height: auto; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>事实笔记本导出</h1>
+        <p><strong>导出时间</strong>: ${new Date().toLocaleString('zh-CN')}</p>
+        <p><strong>笔记总数</strong>: ${notes.length}</p>
+        <hr>
+    `;
+
+    notes.forEach((note, index) => {
+      htmlContent += `<div class="note">`;
+      htmlContent += `<h2>${index + 1}. ${escapeHtml(note.title || '无标题')}</h2>`;
+      
+      if (note.url) {
+        htmlContent += `<p class="url"><strong>来源</strong>: <a href="${escapeHtml(note.url)}">${escapeHtml(note.url)}</a></p>`;
+      }
+      
+      if (note.text) {
+        htmlContent += `<h3>内容</h3>`;
+        htmlContent += `<div>${note.text.replace(/\n/g, '<br>')}</div>`;
+      }
+      
+      if (note.images && note.images.length > 0) {
+        htmlContent += `<h3>图片 (${note.images.length} 张)</h3>`;
+        note.images.forEach((imageData) => {
+          htmlContent += `<img src="${imageData}" alt="图片">`;
+        });
+      }
+      
+      htmlContent += `<div class="meta">`;
+      if (note.createdAt) {
+        htmlContent += `创建时间: ${new Date(note.createdAt).toLocaleString('zh-CN')} `;
+      }
+      if (note.updatedAt) {
+        htmlContent += `更新时间: ${new Date(note.updatedAt).toLocaleString('zh-CN')}`;
+      }
+      htmlContent += `</div>`;
+      htmlContent += `</div>`;
+    });
+
+    htmlContent += `</body></html>`;
+
+    const blob = new Blob([htmlContent], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fact-notebook-export-${new Date().toISOString().split('T')[0]}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    alert('已导出为 Word 格式文件。\n注意：这是一个 HTML 文件，可以在 Word 中打开并另存为真正的 DOCX 格式。');
+  } catch (error) {
+    console.error('导出失败:', error);
+    alert('导出失败，请重试');
+  }
+}
+
+// HTML 转义函数
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}

@@ -360,6 +360,7 @@
   z-index: 2147483648;
   overflow-y: auto;
   padding: 20px;
+  box-sizing: border-box; /* 确保 padding 不会导致内容溢出 */
 }
 
 .modal.show {
@@ -372,7 +373,7 @@
   background: white;
   border-radius: 8px;
   width: 100%;
-  max-width: 600px;
+  max-width: min(600px, calc(100% - 20px)); /* 确保不超出可视区域 */
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -383,7 +384,7 @@
 }
 
 .modal-header {
-  padding: 16px;
+  padding: 16px 24px; /* 左右 24px，与 modal-body 对齐 */
   border-bottom: 1px solid #e0e0e0;
   display: flex;
   justify-content: space-between;
@@ -413,16 +414,17 @@
   color: #333;
 }
 
+/* 模态框样式 - 确保左右对齐 */
 .modal-body {
-  padding: 16px;
+  padding: 16px 24px; /* 左右 24px，上下 16px，确保左右对齐 */
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
   position: relative;
   box-sizing: border-box;
-  /* 为滚动条预留空间，确保左右对齐 */
-  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 确保 modal-body 内的元素可以超出边界（用于显示调整大小控制） */
@@ -431,25 +433,35 @@
   z-index: 1;
 }
 
-/* 确保 form-group 与 modal-body 的 padding 对齐 */
+/* 确保 form-group 完全占据可用宽度，左右对齐 */
 .modal-body .form-group {
+  margin-bottom: 16px;
+  width: 100%;
   margin-left: 0;
   margin-right: 0;
   padding-left: 0;
   padding-right: 0;
-  width: 100%;
   box-sizing: border-box;
-  /* 确保输入框不会超出容器，右边有适当空隙 */
-  max-width: 100%;
+  flex-shrink: 0; /* 默认不收缩 */
 }
 
-/* 滚动条样式，确保不影响布局 */
+/* 文本内容区域展开占满剩余空间 */
+.modal-body .form-group-textarea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 16px;
+}
+
+/* 优化滚动条样式 */
 .modal-body::-webkit-scrollbar {
   width: 8px;
 }
 
 .modal-body::-webkit-scrollbar-track {
-  background: transparent;
+  background: #f5f5f5;
+  border-radius: 4px;
 }
 
 .modal-body::-webkit-scrollbar-thumb {
@@ -461,8 +473,14 @@
   background: #999;
 }
 
+/* Firefox 滚动条样式 */
+.modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: #ccc #f5f5f5;
+}
+
 .modal-footer {
-  padding: 16px;
+  padding: 16px 24px; /* 左右 24px，与 modal-body 对齐 */
   border-top: 1px solid #e0e0e0;
   display: flex;
   justify-content: flex-end;
@@ -486,6 +504,41 @@
   color: #333;
 }
 
+/* 文本内容标题栏 */
+.textarea-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.textarea-header label {
+  margin-bottom: 0;
+}
+
+.text-expand-btn {
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  color: #555;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.text-expand-btn:hover {
+  background: #e9e9e9;
+  color: #333;
+}
+
+.text-expand-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+/* 输入框和文本区域的对齐 */
 .form-group input,
 .form-group textarea {
   width: 100%;
@@ -497,22 +550,42 @@
   box-sizing: border-box;
   margin: 0;
   display: block;
-  /* 确保输入框不会超出容器，右边有适当空隙 */
   max-width: 100%;
-  /* 确保输入框不会因为滚动条而偏移，留出右边距 */
-  position: relative;
-  /* 防止输入框内容溢出 */
-  overflow-wrap: break-word;
 }
 
 .form-group textarea {
-  resize: both;
+  resize: vertical;
   min-height: 200px;
-  min-width: 100%;
   overflow: auto;
-  max-width: 100%;
-  /* 确保 textarea 不会超出容器 */
-  box-sizing: border-box;
+}
+
+/* 文本内容 textarea 展开占满可用空间 */
+.form-group-textarea textarea {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* 文本内容展开模式 */
+#addNoteModal.expand-text .modal-content {
+  height: 90vh;
+}
+
+#addNoteModal.expand-text .modal-body {
+  overflow: hidden;
+}
+
+#addNoteModal.expand-text .modal-body .form-group:not(.form-group-textarea) {
+  display: none;
+}
+
+#addNoteModal.expand-text .form-group-textarea {
+  margin-bottom: 0;
+}
+
+#addNoteModal.expand-text .form-group-textarea textarea {
+  height: 100%;
+  resize: none;
 }
 
 /* 确保 textarea 的调整大小控制可见 */

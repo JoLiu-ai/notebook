@@ -3,6 +3,13 @@
 // 安装时的初始化
 chrome.runtime.onInstalled.addListener(() => {
   console.log('事实笔记本插件已安装');
+  
+  // 创建右键菜单
+  chrome.contextMenus.create({
+    id: "saveToNote",
+    title: "保存到事实笔记本",
+    contexts: ["selection", "image", "link"]
+  });
 });
 
 // 点击插件图标时切换侧边栏
@@ -45,3 +52,116 @@ chrome.commands?.onCommand.addListener((command) => {
   }
 });
 
+// 监听右键菜单点击事件
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === "saveToNote") {
+    try {
+      const note = {
+        id: Date.now().toString(),
+        title: '',
+        url: tab.url,
+        text: '',
+        images: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // 处理选中的文本
+      if (info.selectionText) {
+        note.text = info.selectionText;
+        note.title = info.selectionText.substring(0, 50) + (info.selectionText.length > 50 ? '...' : '');
+      }
+
+      // 处理图片
+      if (info.mediaType === 'image' && info.srcUrl) {
+        try {
+          // 将图片 URL 转换为 base64
+          const imageBase64 = await imageUrlToBase64(info.srcUrl);
+          note.images = [imageBase64];
+          if (!note.title) {
+            note.title = '保存的图片';
+          }
+        } catch (error) {
+          console.error('转换图片失败:', error);
+          // 如果转换失败，保存图片 URL
+          note.text = (note.text ? note.text + '\n\n' : '') + `图片链接: ${info.srcUrl}`;
+        }
+      }
+
+      // 处理链接
+      if (info.linkUrl) {
+        note.url = info.linkUrl;
+        if (info.linkText) {
+          note.title = info.linkText;
+          note.text = (note.text ? note.text + '\n\n' : '') + `链接: ${info.linkUrl}`;
+        } else {
+          note.title = info.linkUrl;
+        }
+      }
+
+      // 如果没有标题，使用页面标题
+      if (!note.title) {
+        note.title = tab.title || '无标题';
+      }
+
+      // 保存笔记
+      await saveNoteToStorage(note);
+      
+      // 显示通知
+      chrome.notifications?.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: '事实笔记本',
+        message: '已保存到笔记'
+      });
+    } catch (error) {
+      console.error('保存笔记失败:', error);
+    }
+  }
+});
+
+// 将图片 URL 转换为 base64
+async function imageUrlToBase64(imageUrl) {
+  try {
+    // 使用 fetch 获取图片
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        resolve(reader.result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    // 如果跨域或其他错误，尝试使用 content script 获取
+    throw error;
+  }
+}
+
+// 保存笔记到存储
+async function saveNoteToStorage(note) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(['fact_notebook_notes'], (result) => {
+      const notes = result.fact_notebook_notes || [];
+      
+      // 检查是否已存在（更新场景）
+      const existingIndex = notes.findIndex(n => n.id === note.id);
+      if (existingIndex >= 0) {
+        notes[existingIndex] = note;
+      } else {
+        notes.push(note);
+      }
+
+      chrome.storage.local.set({ fact_notebook_notes: notes }, () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(note);
+        }
+      });
+    });
+  });
+}
