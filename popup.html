@@ -87,6 +87,41 @@
     </div>
   </div>
 
+
+  <!-- 下载数据弹窗 -->
+  <div class="modal" id="downloadModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="downloadModalTitle">下载数据</h2>
+        <button class="close-btn" id="closeDownloadModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" id="downloadModeRow">
+          <label for="downloadModeSelect">下载方式</label>
+          <select id="downloadModeSelect">
+            <option value="batch">批量下载（每条笔记一个文件）</option>
+            <option value="merged">合并下载（所有笔记一个文件）</option>
+          </select>
+          <div class="form-hint">批量下载可能触发浏览器多文件下载提示。</div>
+        </div>
+        <div class="form-group">
+          <label for="downloadFormatSelect">文件格式</label>
+          <select id="downloadFormatSelect"></select>
+        </div>
+        <div class="form-group" id="downloadImagesRow">
+          <label class="checkbox-label">
+            <input type="checkbox" id="downloadIncludeImages">
+            包含图片（文件会更大）
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelDownloadBtn">取消</button>
+        <button class="btn-primary" id="confirmDownloadBtn">开始下载</button>
+      </div>
+    </div>
+  </div>
+
   <script src="storage.js"></script>
   <script src="popup.js"></script>
 </body>

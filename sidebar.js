@@ -2,6 +2,7 @@
 const storage = noteStorage;
 let currentViewingNoteId = null;
 let selectedImages = [];
+let downloadContext = { scope: 'all', note: null };
 let isResizing = false;
 let sidebarWidth = 400;
 let sidebarPosition = 'right'; // 'left' or 'right'
@@ -26,6 +27,16 @@ const closeViewModal = document.getElementById('closeViewModal');
 const cancelBtn = document.getElementById('cancelBtn');
 const saveNoteBtn = document.getElementById('saveNoteBtn');
 const deleteNoteBtn = document.getElementById('deleteNoteBtn');
+const downloadModal = document.getElementById('downloadModal');
+const downloadModalTitle = document.getElementById('downloadModalTitle');
+const closeDownloadModalBtn = document.getElementById('closeDownloadModal');
+const cancelDownloadBtn = document.getElementById('cancelDownloadBtn');
+const confirmDownloadBtn = document.getElementById('confirmDownloadBtn');
+const downloadModeSelect = document.getElementById('downloadModeSelect');
+const downloadFormatSelect = document.getElementById('downloadFormatSelect');
+const downloadIncludeImages = document.getElementById('downloadIncludeImages');
+const downloadModeRow = document.getElementById('downloadModeRow');
+const downloadImagesRow = document.getElementById('downloadImagesRow');
 const closeViewBtn = document.getElementById('closeViewBtn');
 const notesTab = document.getElementById('notesTab');
 const libraryTab = document.getElementById('libraryTab');
@@ -46,8 +57,6 @@ const capturePageBtn = document.getElementById('capturePageBtn');
 const totalNotesEl = document.getElementById('totalNotes');
 const totalImagesEl = document.getElementById('totalImages');
 const storageSizeEl = document.getElementById('storageSize');
-const importAllBtn = document.getElementById('importAllBtn');
-const exportAllBtn = document.getElementById('exportAllBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const libraryList = document.getElementById('libraryList');
 
@@ -241,7 +250,7 @@ function setupEventListeners() {
 
   // 导出数据按钮
   exportBtn.addEventListener('click', async () => {
-    await showExportFormatDialog();
+    openDownloadModal({ scope: 'all' });
   });
 
   // 搜索
@@ -254,6 +263,31 @@ function setupEventListeners() {
   closeViewModal.addEventListener('click', closeViewNoteModal);
   cancelBtn.addEventListener('click', closeAddNoteModal);
   closeViewBtn.addEventListener('click', closeViewNoteModal);
+
+  // 下载弹窗
+  if (closeDownloadModalBtn) {
+    closeDownloadModalBtn.addEventListener('click', closeDownloadModal);
+  }
+  if (cancelDownloadBtn) {
+    cancelDownloadBtn.addEventListener('click', closeDownloadModal);
+  }
+  if (confirmDownloadBtn) {
+    confirmDownloadBtn.addEventListener('click', handleDownloadConfirm);
+  }
+  if (downloadModeSelect) {
+    downloadModeSelect.addEventListener('change', updateDownloadFormatOptions);
+  }
+  if (downloadFormatSelect) {
+    downloadFormatSelect.addEventListener('change', updateDownloadImagesVisibility);
+  }
+  if (downloadModal) {
+    downloadModal.addEventListener('click', (e) => {
+      if (e.target === downloadModal) {
+        closeDownloadModal();
+      }
+    });
+  }
+
 
   // 保存笔记
   saveNoteBtn.addEventListener('click', async () => {
@@ -309,14 +343,6 @@ function setupEventListeners() {
   });
 
   // 文档库操作
-  importAllBtn.addEventListener('click', async () => {
-    await importData();
-  });
-
-  exportAllBtn.addEventListener('click', async () => {
-    await exportData();
-  });
-
   clearAllBtn.addEventListener('click', async () => {
     if (confirm('确定要清空所有数据吗？此操作不可恢复！')) {
       await chrome.storage.local.clear();
@@ -492,18 +518,32 @@ function createNoteCard(note) {
 
   const meta = document.createElement('div');
   meta.className = 'note-meta';
-  
+
   const date = document.createElement('span');
   date.textContent = formatDate(note.createdAt);
 
-  const imagesCount = document.createElement('span');
-  imagesCount.className = 'note-images-count';
+  const metaRight = document.createElement('div');
+  metaRight.className = 'note-meta-right';
+
   if (note.images && note.images.length > 0) {
+    const imagesCount = document.createElement('span');
+    imagesCount.className = 'note-images-count';
     imagesCount.innerHTML = `🖼️ ${note.images.length}`;
+    metaRight.appendChild(imagesCount);
   }
 
+  const downloadBtn = document.createElement('button');
+  downloadBtn.type = 'button';
+  downloadBtn.className = 'note-download-btn';
+  downloadBtn.textContent = '下载';
+  downloadBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDownloadModal({ scope: 'single', note });
+  });
+  metaRight.appendChild(downloadBtn);
+
   meta.appendChild(date);
-  meta.appendChild(imagesCount);
+  meta.appendChild(metaRight);
 
   card.appendChild(title);
   card.appendChild(preview);
@@ -1041,6 +1081,517 @@ async function importData() {
   }
 }
 
+
+
+// 下载弹窗控制
+function openDownloadModal({ scope, note }) {
+  downloadContext = {
+    scope: scope || 'all',
+    note: note || null
+  };
+
+  if (downloadModalTitle) {
+    downloadModalTitle.textContent = downloadContext.scope === 'single' ? '下载笔记' : '下载全部';
+  }
+
+  if (downloadModeRow) {
+    downloadModeRow.style.display = downloadContext.scope === 'all' ? '' : 'none';
+  }
+
+  if (downloadModeSelect && downloadContext.scope === 'all') {
+    downloadModeSelect.value = 'batch';
+  }
+
+  if (downloadIncludeImages) {
+    downloadIncludeImages.checked = false;
+  }
+
+  updateDownloadFormatOptions();
+
+  if (downloadModal) {
+    downloadModal.classList.add('show');
+  }
+}
+
+function closeDownloadModal() {
+  if (downloadModal) {
+    downloadModal.classList.remove('show');
+  }
+}
+
+function getDownloadFormatOptions(scope, mode) {
+  if (scope === 'single') {
+    return [
+      { value: 'json', label: 'JSON - 原始数据格式' },
+      { value: 'md', label: 'Markdown - Markdown 格式' },
+      { value: 'pdf', label: 'PDF - PDF 文档' },
+      { value: 'docx', label: 'DOCX - Word 文档' }
+    ];
+  }
+
+  if (mode === 'batch') {
+    return [
+      { value: 'json', label: 'JSON - 原始数据格式' },
+      { value: 'md', label: 'Markdown - Markdown 格式' }
+    ];
+  }
+
+  return [
+    { value: 'json', label: 'JSON - 原始数据格式' },
+    { value: 'md', label: 'Markdown - Markdown 格式' },
+    { value: 'pdf', label: 'PDF - PDF 文档' },
+    { value: 'docx', label: 'DOCX - Word 文档' }
+  ];
+}
+
+function updateDownloadFormatOptions() {
+  if (!downloadFormatSelect) return;
+
+  const scope = downloadContext.scope || 'all';
+  const mode = scope === 'all' && downloadModeSelect ? downloadModeSelect.value : 'single';
+  const options = getDownloadFormatOptions(scope, mode);
+
+  downloadFormatSelect.innerHTML = '';
+  options.forEach((option) => {
+    const optionEl = document.createElement('option');
+    optionEl.value = option.value;
+    optionEl.textContent = option.label;
+    downloadFormatSelect.appendChild(optionEl);
+  });
+
+  updateDownloadImagesVisibility();
+}
+
+function updateDownloadImagesVisibility() {
+  if (!downloadFormatSelect || !downloadImagesRow) return;
+
+  const format = downloadFormatSelect.value;
+  const showImages = format === 'json' || format === 'md';
+  downloadImagesRow.style.display = showImages ? '' : 'none';
+
+  if (!showImages && downloadIncludeImages) {
+    downloadIncludeImages.checked = false;
+  }
+}
+
+async function handleDownloadConfirm() {
+  if (!downloadFormatSelect) return;
+
+  const scope = downloadContext.scope || 'all';
+  const mode = scope === 'all' && downloadModeSelect ? downloadModeSelect.value : 'single';
+  const format = downloadFormatSelect.value;
+  const includeImages = downloadIncludeImages ? downloadIncludeImages.checked : false;
+
+  if (scope === 'single') {
+    const note = downloadContext.note;
+    if (!note) {
+      alert('未找到要下载的笔记');
+      return;
+    }
+  }
+
+  closeDownloadModal();
+
+  if (scope === 'single') {
+    const note = downloadContext.note;
+    if (format === 'json') {
+      await downloadNoteAsJSON(note, includeImages);
+    } else if (format === 'md') {
+      await downloadNoteAsMarkdown(note, includeImages);
+    } else if (format === 'pdf') {
+      await exportSingleNoteToPDF(note);
+    } else if (format === 'docx') {
+      await exportSingleNoteToDOCX(note);
+    }
+    return;
+  }
+
+  if (mode === 'batch') {
+    if (format === 'json') {
+      await batchDownloadNotesAsJSON(includeImages);
+    } else if (format === 'md') {
+      await batchDownloadNotesAsMarkdown(includeImages);
+    }
+    return;
+  }
+
+  if (format === 'json') {
+    await exportToJSON({ includeImages });
+  } else if (format === 'md') {
+    await exportToMarkdown(includeImages);
+  } else if (format === 'pdf') {
+    await exportToPDF();
+  } else if (format === 'docx') {
+    await exportToDOCX();
+  }
+}
+
+async function batchDownloadNotesAsJSON(includeImages) {
+  try {
+    const notes = await storage.getAllNotes();
+
+    if (notes.length === 0) {
+      alert('没有可下载的笔记');
+      return;
+    }
+
+    const shouldIncludeImages = typeof includeImages === 'boolean'
+      ? includeImages
+      : confirm('批量下载是否包含图片？\n（包含图片会显著增大文件）');
+
+    for (let i = 0; i < notes.length; i++) {
+      const note = notes[i];
+      const exportData = buildJsonExportData([note], shouldIncludeImages);
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const filename = buildNoteFilename(note, i, 'json', shouldIncludeImages ? 'full' : 'simple');
+      downloadTextFile(jsonString, filename, 'application/json');
+      await sleep(120);
+    }
+  } catch (error) {
+    console.error('批量下载失败:', error);
+    alert('批量下载失败，请重试');
+  }
+}
+
+async function batchDownloadNotesAsMarkdown(includeImages) {
+  try {
+    const notes = await storage.getAllNotes();
+
+    if (notes.length === 0) {
+      alert('没有可下载的笔记');
+      return;
+    }
+
+    const shouldIncludeImages = typeof includeImages === 'boolean'
+      ? includeImages
+      : confirm('批量下载是否包含图片？\n（包含图片会显著增大文件）');
+
+    for (let i = 0; i < notes.length; i++) {
+      const note = notes[i];
+      const markdown = buildMarkdownContent([note], shouldIncludeImages);
+      const filename = buildNoteFilename(note, i, 'md');
+      downloadTextFile(markdown, filename, 'text/markdown;charset=utf-8');
+      await sleep(120);
+    }
+  } catch (error) {
+    console.error('批量下载失败:', error);
+    alert('批量下载失败，请重试');
+  }
+}
+
+async function downloadNoteAsJSON(note, includeImages) {
+  const shouldIncludeImages = typeof includeImages === 'boolean'
+    ? includeImages
+    : confirm('是否包含图片？\n（包含图片会显著增大文件）');
+  const exportData = buildJsonExportData([note], shouldIncludeImages);
+  const jsonString = JSON.stringify(exportData, null, 2);
+  const filename = buildNoteFilename(note, 0, 'json', shouldIncludeImages ? 'full' : 'simple');
+  downloadTextFile(jsonString, filename, 'application/json');
+}
+
+async function downloadNoteAsMarkdown(note, includeImages) {
+  const shouldIncludeImages = typeof includeImages === 'boolean'
+    ? includeImages
+    : confirm('是否包含图片？\n（包含图片会显著增大文件）');
+  const markdown = buildMarkdownContent([note], shouldIncludeImages);
+  const filename = buildNoteFilename(note, 0, 'md');
+  downloadTextFile(markdown, filename, 'text/markdown;charset=utf-8');
+}
+
+function buildJsonExportData(notes, includeImages) {
+  return {
+    version: '1.0',
+    exportDate: new Date().toISOString(),
+    totalNotes: notes.length,
+    notes: includeImages
+      ? notes
+      : notes.map(note => ({
+          id: note.id,
+          title: note.title,
+          url: note.url,
+          text: note.text,
+          imageCount: note.images ? note.images.length : 0,
+          createdAt: note.createdAt,
+          updatedAt: note.updatedAt
+        }))
+  };
+}
+
+function buildMarkdownContent(notes, includeImages) {
+  let markdown = `# 事实笔记本导出
+
+`;
+  markdown += `**导出时间**: ${new Date().toLocaleString('zh-CN')}
+`;
+  markdown += `**笔记总数**: ${notes.length}
+
+`;
+  markdown += `---
+
+`;
+
+  notes.forEach((note, index) => {
+    markdown += `## ${index + 1}. ${note.title || '无标题'}
+
+`;
+
+    if (note.url) {
+      markdown += `**来源**: [${note.url}](${note.url})
+
+`;
+    }
+
+    if (note.text) {
+      markdown += `### 内容
+
+`;
+      markdown += `${note.text}
+
+`;
+    }
+
+    if (note.images && note.images.length > 0) {
+      if (includeImages) {
+        markdown += `### 图片 (${note.images.length} 张)
+
+`;
+        note.images.forEach((imageData, imgIndex) => {
+          markdown += `![图片 ${imgIndex + 1}](${imageData})
+
+`;
+        });
+      } else {
+        markdown += `### 图片数量：${note.images.length} 张
+
+`;
+      }
+    }
+
+    if (note.createdAt) {
+      markdown += `**创建时间**: ${new Date(note.createdAt).toLocaleString('zh-CN')}
+`;
+    }
+    if (note.updatedAt) {
+      markdown += `**更新时间**: ${new Date(note.updatedAt).toLocaleString('zh-CN')}
+`;
+    }
+
+    markdown += `
+---
+
+`;
+  });
+
+  return markdown;
+}
+
+function buildNoteFilename(note, index, extension, suffix) {
+  const dateTag = new Date().toISOString().split('T')[0];
+  const title = sanitizeFileName(note.title || '');
+  const baseName = title || `note-${index + 1}`;
+  const suffixTag = suffix ? `-${suffix}` : '';
+  return `fact-notebook-${baseName}${suffixTag}-${dateTag}.${extension}`;
+}
+
+function sanitizeFileName(name) {
+  return name.replace(/[\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim();
+}
+
+function downloadTextFile(content, filename, type) {
+  const blob = new Blob([content], { type });
+  downloadBlob(blob, filename);
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function exportSingleNoteToPDF(note) {
+  try {
+    const notes = [note];
+
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>事实笔记本导出</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+          }
+          h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+          h2 { color: #555; margin-top: 30px; }
+          h3 { color: #666; }
+          .note { margin-bottom: 40px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; }
+          .url { color: #667eea; word-break: break-all; }
+          .meta { color: #999; font-size: 12px; margin-top: 10px; }
+          img { max-width: 100%; height: auto; margin: 10px 0; }
+          .page-break { page-break-after: always; }
+        </style>
+      </head>
+      <body>
+        <h1>事实笔记本导出</h1>
+        <p><strong>导出时间</strong>: ${new Date().toLocaleString('zh-CN')}</p>
+        <p><strong>笔记总数</strong>: ${notes.length}</p>
+        <hr>
+    `;
+
+    notes.forEach((noteItem, index) => {
+      htmlContent += `<div class="note ${index > 0 ? 'page-break' : ''}">`;
+      htmlContent += `<h2>${index + 1}. ${escapeHtml(noteItem.title || '无标题')}</h2>`;
+
+      if (noteItem.url) {
+        htmlContent += `<p class="url"><strong>来源</strong>: <a href="${escapeHtml(noteItem.url)}">${escapeHtml(noteItem.url)}</a></p>`;
+      }
+
+      if (noteItem.text) {
+        htmlContent += `<h3>内容</h3>`;
+        htmlContent += `<div>${noteItem.text.replace(/\n/g, '<br>')}</div>`;
+      }
+
+      if (noteItem.images && noteItem.images.length > 0) {
+        htmlContent += `<h3>图片 (${noteItem.images.length} 张)</h3>`;
+        noteItem.images.forEach((imageData) => {
+          htmlContent += `<img src="${imageData}" alt="图片">`;
+        });
+      }
+
+      htmlContent += `<div class="meta">`;
+      if (noteItem.createdAt) {
+        htmlContent += `创建时间: ${new Date(noteItem.createdAt).toLocaleString('zh-CN')} `;
+      }
+      if (noteItem.updatedAt) {
+        htmlContent += `更新时间: ${new Date(noteItem.updatedAt).toLocaleString('zh-CN')}`;
+      }
+      htmlContent += `</div>`;
+      htmlContent += `</div>`;
+    });
+
+    htmlContent += `</body></html>`;
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    };
+  } catch (error) {
+    console.error('导出失败:', error);
+    alert('导出失败，请重试');
+  }
+}
+
+async function exportSingleNoteToDOCX(note) {
+  try {
+    const notes = [note];
+
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:w="urn:schemas-microsoft-com:office:word"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="ProgId" content="Word.Document">
+        <meta name="Generator" content="Microsoft Word">
+        <meta name="Originator" content="Microsoft Word">
+        <title>事实笔记本导出</title>
+        <style>
+          @page {
+            size: A4;
+            margin: 2.5cm;
+          }
+          body {
+            font-family: 'Microsoft YaHei', SimSun, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+          }
+          h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+          h2 { color: #555; margin-top: 30px; }
+          h3 { color: #666; }
+          .note { margin-bottom: 40px; }
+          .url { color: #667eea; word-break: break-all; }
+          .meta { color: #999; font-size: 10pt; margin-top: 10px; }
+          img { max-width: 100%; height: auto; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>事实笔记本导出</h1>
+        <p><strong>导出时间</strong>: ${new Date().toLocaleString('zh-CN')}</p>
+        <p><strong>笔记总数</strong>: ${notes.length}</p>
+        <hr>
+    `;
+
+    notes.forEach((noteItem, index) => {
+      htmlContent += `<div class="note">`;
+      htmlContent += `<h2>${index + 1}. ${escapeHtml(noteItem.title || '无标题')}</h2>`;
+
+      if (noteItem.url) {
+        htmlContent += `<p class="url"><strong>来源</strong>: <a href="${escapeHtml(noteItem.url)}">${escapeHtml(noteItem.url)}</a></p>`;
+      }
+
+      if (noteItem.text) {
+        htmlContent += `<h3>内容</h3>`;
+        htmlContent += `<div>${noteItem.text.replace(/\n/g, '<br>')}</div>`;
+      }
+
+      if (noteItem.images && noteItem.images.length > 0) {
+        htmlContent += `<h3>图片 (${noteItem.images.length} 张)</h3>`;
+        noteItem.images.forEach((imageData) => {
+          htmlContent += `<img src="${imageData}" alt="图片">`;
+        });
+      }
+
+      htmlContent += `<div class="meta">`;
+      if (noteItem.createdAt) {
+        htmlContent += `创建时间: ${new Date(noteItem.createdAt).toLocaleString('zh-CN')} `;
+      }
+      if (noteItem.updatedAt) {
+        htmlContent += `更新时间: ${new Date(noteItem.updatedAt).toLocaleString('zh-CN')}`;
+      }
+      htmlContent += `</div>`;
+      htmlContent += `</div>`;
+    });
+
+    htmlContent += `</body></html>`;
+
+    const filename = buildNoteFilename(note, 0, 'doc');
+    const blob = new Blob([htmlContent], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert('已导出为 Word 格式文件。\n注意：这是一个 HTML 文件，可以在 Word 中打开并另存为真正的 DOCX 格式。');
+  } catch (error) {
+    console.error('导出失败:', error);
+    alert('导出失败，请重试');
+  }
+}
+
 // 显示导出格式选择对话框
 async function showExportFormatDialog() {
   const format = prompt(
@@ -1074,62 +1625,61 @@ async function showExportFormatDialog() {
 }
 
 // 导出为 JSON
-async function exportToJSON() {
+async function exportToJSON(options = {}) {
   try {
     const notes = await storage.getAllNotes();
-    
+
     if (notes.length === 0) {
       alert('没有可导出的笔记');
       return;
     }
 
-    const exportData = {
-      version: '1.0',
-      exportDate: new Date().toISOString(),
-      totalNotes: notes.length,
-      notes: notes.map(note => ({
-        id: note.id,
-        title: note.title,
-        url: note.url,
-        text: note.text,
-        imageCount: note.images ? note.images.length : 0,
-        createdAt: note.createdAt,
-        updatedAt: note.updatedAt
-      }))
-    };
+    const includeImages = typeof options === 'boolean' ? options : options.includeImages;
 
+    if (includeImages === undefined) {
+      const exportData = buildJsonExportData(notes, false);
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fact-notebook-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const includeFull = confirm('是否导出包含图片的完整数据？\n（文件会很大，建议先导出简化版本）');
+
+      if (includeFull) {
+        const fullExportData = buildJsonExportData(notes, true);
+        const fullJsonString = JSON.stringify(fullExportData, null, 2);
+        const fullBlob = new Blob([fullJsonString], { type: 'application/json' });
+        const fullUrl = URL.createObjectURL(fullBlob);
+        const fullA = document.createElement('a');
+        fullA.href = fullUrl;
+        fullA.download = `fact-notebook-full-export-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(fullA);
+        fullA.click();
+        document.body.removeChild(fullA);
+        URL.revokeObjectURL(fullUrl);
+      }
+      return;
+    }
+
+    const exportData = buildJsonExportData(notes, includeImages);
     const jsonString = JSON.stringify(exportData, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `fact-notebook-export-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = includeImages
+      ? `fact-notebook-full-export-${new Date().toISOString().split('T')[0]}.json`
+      : `fact-notebook-export-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    const includeImages = confirm('是否导出包含图片的完整数据？\n（文件会很大，建议先导出简化版本）');
-    
-    if (includeImages) {
-      const fullExportData = {
-        version: '1.0',
-        exportDate: new Date().toISOString(),
-        totalNotes: notes.length,
-        notes: notes
-      };
-      
-      const fullJsonString = JSON.stringify(fullExportData, null, 2);
-      const fullBlob = new Blob([fullJsonString], { type: 'application/json' });
-      const fullUrl = URL.createObjectURL(fullBlob);
-      const fullA = document.createElement('a');
-      fullA.href = fullUrl;
-      fullA.download = `fact-notebook-full-export-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(fullA);
-      fullA.click();
-      document.body.removeChild(fullA);
-      URL.revokeObjectURL(fullUrl);
-    }
   } catch (error) {
     console.error('导出失败:', error);
     alert('导出失败，请重试');
@@ -1137,49 +1687,16 @@ async function exportToJSON() {
 }
 
 // 导出为 Markdown
-async function exportToMarkdown() {
+async function exportToMarkdown(includeImages = true) {
   try {
     const notes = await storage.getAllNotes();
-    
+
     if (notes.length === 0) {
       alert('没有可导出的笔记');
       return;
     }
 
-    let markdown = `# 事实笔记本导出\n\n`;
-    markdown += `**导出时间**: ${new Date().toLocaleString('zh-CN')}\n`;
-    markdown += `**笔记总数**: ${notes.length}\n\n`;
-    markdown += `---\n\n`;
-
-    notes.forEach((note, index) => {
-      markdown += `## ${index + 1}. ${note.title || '无标题'}\n\n`;
-      
-      if (note.url) {
-        markdown += `**来源**: [${note.url}](${note.url})\n\n`;
-      }
-      
-      if (note.text) {
-        markdown += `### 内容\n\n`;
-        markdown += `${note.text}\n\n`;
-      }
-      
-      if (note.images && note.images.length > 0) {
-        markdown += `### 图片 (${note.images.length} 张)\n\n`;
-        note.images.forEach((imageData, imgIndex) => {
-          // Markdown 中直接嵌入 base64 图片
-          markdown += `![图片 ${imgIndex + 1}](${imageData})\n\n`;
-        });
-      }
-      
-      if (note.createdAt) {
-        markdown += `**创建时间**: ${new Date(note.createdAt).toLocaleString('zh-CN')}\n`;
-      }
-      if (note.updatedAt) {
-        markdown += `**更新时间**: ${new Date(note.updatedAt).toLocaleString('zh-CN')}\n`;
-      }
-      
-      markdown += `\n---\n\n`;
-    });
+    const markdown = buildMarkdownContent(notes, includeImages !== false);
 
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
