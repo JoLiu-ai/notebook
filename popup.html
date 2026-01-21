@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>事实笔记本</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>📝 事实笔记本</h1>
+      <div class="header-actions">
+        <button id="exportBtn" class="btn-icon" title="导出数据">📥</button>
+        <button id="addNoteBtn" class="btn-primary">+ 添加笔记</button>
+      </div>
+    </header>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="搜索笔记...">
+    </div>
+
+    <div class="notes-container" id="notesContainer">
+      <!-- 笔记列表将在这里动态生成 -->
+    </div>
+
+    <div class="empty-state" id="emptyState">
+      <p>还没有笔记</p>
+      <p class="hint">点击"添加笔记"或使用快捷键保存当前页面内容</p>
+    </div>
+  </div>
+
+  <!-- 添加笔记弹窗 -->
+  <div class="modal" id="addNoteModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>添加笔记</h2>
+        <button class="close-btn" id="closeModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="noteTitle">标题</label>
+          <input type="text" id="noteTitle" placeholder="输入笔记标题">
+        </div>
+        <div class="form-group">
+          <label for="noteUrl">网址</label>
+          <input type="text" id="noteUrl" placeholder="自动填充当前页面网址">
+        </div>
+        <div class="form-group">
+          <label for="noteText">文本内容</label>
+          <textarea id="noteText" rows="6" placeholder="输入或粘贴文本内容..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>图片</label>
+          <div class="image-upload-area" id="imageUploadArea">
+            <input type="file" id="imageInput" accept="image/*" multiple style="display: none;">
+            <button type="button" id="selectImageBtn" class="btn-secondary">选择图片</button>
+            <div class="image-preview" id="imagePreview"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <button type="button" id="capturePageBtn" class="btn-secondary">📸 捕获当前页面</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelBtn">取消</button>
+        <button class="btn-primary" id="saveNoteBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 查看笔记详情弹窗 -->
+  <div class="modal" id="viewNoteModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="viewNoteTitle"></h2>
+        <button class="close-btn" id="closeViewModal">&times;</button>
+      </div>
+      <div class="modal-body" id="viewNoteBody">
+        <!-- 笔记详情将在这里显示 -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn-danger" id="deleteNoteBtn">删除</button>
+        <button class="btn-secondary" id="editNoteBtn" style="display: none;">编辑</button>
+        <button class="btn-secondary" id="closeViewBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>生成图标</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    .icon-preview {
+      display: flex;
+      gap: 20px;
+      margin: 20px 0;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      margin: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #5568d3;
+    }
+  </style>
+</head>
+<body>
+  <h1>事实笔记本 - 图标生成器</h1>
+  <p>点击下面的按钮生成图标文件，然后右键保存图片到 icons 文件夹</p>
+  
+  <button onclick="generateIcons()">生成图标</button>
+  
+  <div class="icon-preview" id="preview"></div>
+
+  <script>
+    function generateIcons() {
+      const sizes = [16, 48, 128];
+      const preview = document.getElementById('preview');
+      preview.innerHTML = '';
+
+      sizes.forEach(size => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        // 绘制渐变背景
+        const gradient = ctx.createLinearGradient(0, 0, size, size);
+        gradient.addColorStop(0, '#667eea');
+        gradient.addColorStop(1, '#764ba2');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+
+        // 绘制笔记本图标（简单的线条）
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = Math.max(1, size / 16);
+        ctx.beginPath();
+        
+        // 绘制笔记本形状
+        const margin = size * 0.2;
+        const lineSpacing = size * 0.15;
+        
+        // 外框
+        ctx.rect(margin, margin, size - margin * 2, size - margin * 2);
+        ctx.stroke();
+        
+        // 内部横线（模拟笔记本）
+        for (let i = 1; i < 3; i++) {
+          const y = margin + lineSpacing * i;
+          ctx.beginPath();
+          ctx.moveTo(margin * 1.5, y);
+          ctx.lineTo(size - margin * 1.5, y);
+          ctx.stroke();
+        }
+
+        // 添加标题
+        const title = document.createElement('div');
+        title.style.marginTop = '10px';
+        title.innerHTML = `<canvas id="canvas${size}"></canvas><br><a href="#" download="icon${size}.png" onclick="downloadIcon(this, ${size})">下载 icon${size}.png</a>`;
+        title.querySelector('canvas').replaceWith(canvas);
+        preview.appendChild(title);
+      });
+    }
+
+    function downloadIcon(link, size) {
+      // 找到对应的 canvas
+      const container = link.parentElement;
+      const canvas = container.querySelector('canvas');
+      
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `icon${size}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+      }, 'image/png');
+    }
+
+    // 自动生成图标
+    window.onload = function() {
+      generateIcons();
+    };
+  </script>
+</body>
+</html>
+
