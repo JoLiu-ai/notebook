@@ -94,22 +94,28 @@ class ErrorHandler {
    * @param {string} message - 错误消息
    * @param {number} [duration=3000] - 显示时长（毫秒）
    */
-  showError(message, duration = 3000) {
+  showError(message, duration = 4000) {
     // 创建 Toast 提示
     const toast = document.createElement('div');
     toast.className = 'error-toast';
-    toast.textContent = message;
+    toast.innerHTML = `<span style="margin-right: 8px;">✗</span>${message}`;
     toast.style.cssText = `
       position: fixed;
       top: 20px;
       right: 20px;
       background: #ff4444;
       color: white;
-      padding: 12px 20px;
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      padding: 14px 24px;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3);
       z-index: 10000;
       animation: slideIn 0.3s ease;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      min-width: 200px;
+      max-width: 400px;
     `;
 
     document.body.appendChild(toast);
@@ -117,7 +123,9 @@ class ErrorHandler {
     setTimeout(() => {
       toast.style.animation = 'slideOut 0.3s ease';
       setTimeout(() => {
-        document.body.removeChild(toast);
+        if (document.body.contains(toast)) {
+          document.body.removeChild(toast);
+        }
       }, 300);
     }, duration);
   }
@@ -127,21 +135,27 @@ class ErrorHandler {
    * @param {string} message - 成功消息
    * @param {number} [duration=2000] - 显示时长（毫秒）
    */
-  showSuccess(message, duration = 2000) {
+  showSuccess(message, duration = 3000) {
     const toast = document.createElement('div');
     toast.className = 'success-toast';
-    toast.textContent = message;
+    toast.innerHTML = `<span style="margin-right: 8px;">✓</span>${message}`;
     toast.style.cssText = `
       position: fixed;
       top: 20px;
       right: 20px;
       background: #4caf50;
       color: white;
-      padding: 12px 20px;
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      padding: 14px 24px;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
       z-index: 10000;
       animation: slideIn 0.3s ease;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      min-width: 200px;
+      max-width: 400px;
     `;
 
     document.body.appendChild(toast);
@@ -149,7 +163,9 @@ class ErrorHandler {
     setTimeout(() => {
       toast.style.animation = 'slideOut 0.3s ease';
       setTimeout(() => {
-        document.body.removeChild(toast);
+        if (document.body.contains(toast)) {
+          document.body.removeChild(toast);
+        }
       }, 300);
     }, duration);
   }

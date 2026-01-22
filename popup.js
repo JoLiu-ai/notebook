@@ -50,8 +50,10 @@ let downloadContext = { scope: 'all', note: null };
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
   await loadNotes();
+  await cloudServices.init(); // 初始化云服务
   setupEventListeners();
   loadCurrentPageInfo();
+  loadCloudServiceStatus(); // 加载云服务状态
 });
 
 // 设置事件监听
@@ -77,8 +79,9 @@ function setupEventListeners() {
   if (editNoteBtn) {
     editNoteBtn.addEventListener('click', () => {
       if (!currentViewingNoteId) return;
+      const noteId = currentViewingNoteId;
       closeViewNoteModal();
-      editNote(currentViewingNoteId);
+      editNote(noteId);
     });
   }
   if (closeViewBtn) {
@@ -193,6 +196,44 @@ function setupEventListeners() {
       closeViewNoteModal();
     }
   });
+
+  // 云服务相关事件
+  if (cloudSettingsBtn) {
+    cloudSettingsBtn.addEventListener('click', () => {
+      openCloudSettingsModal();
+    });
+  }
+  if (closeCloudSettingsBtn) {
+    closeCloudSettingsBtn.addEventListener('click', closeCloudSettingsModal);
+  }
+  if (closeCloudSettingsBtn2) {
+    closeCloudSettingsBtn2.addEventListener('click', closeCloudSettingsModal);
+  }
+  if (cloudSettingsModal) {
+    cloudSettingsModal.addEventListener('click', (e) => {
+      if (e.target === cloudSettingsModal) {
+        closeCloudSettingsModal();
+      }
+    });
+  }
+  if (exportToGoogleDriveBtn) {
+    exportToGoogleDriveBtn.addEventListener('click', async () => {
+      await handleCloudExport('googleDrive');
+    });
+  }
+  if (exportToNotionBtn) {
+    exportToNotionBtn.addEventListener('click', async () => {
+      await handleCloudExport('notion');
+    });
+  }
+  if (exportToObsidianBtn) {
+    exportToObsidianBtn.addEventListener('click', async () => {
+      await handleCloudExport('obsidian');
+    });
+  }
+
+  // 云服务设置事件
+  setupCloudSettingsListeners();
 }
 
 // 加载当前页面信息
@@ -975,4 +1016,274 @@ async function handleDownloadConfirm() {
 
 // 注意：所有导出函数已移至 common.js
 
-// 注意：所有导出函数已移至 common.js
+// ==================== 云服务功能 ====================
+
+/**
+ * 加载云服务状态
+ */
+async function loadCloudServiceStatus() {
+  const googleDriveStatus = document.getElementById('googleDriveStatus');
+  if (googleDriveStatus) {
+    if (cloudServices.googleDrive.isAuthenticated()) {
+      googleDriveStatus.textContent = '✓ 已认证';
+      googleDriveStatus.className = 'service-status status-connected';
+    } else {
+      googleDriveStatus.textContent = '未认证';
+      googleDriveStatus.className = 'service-status status-disconnected';
+    }
+  }
+
+  const notionStatus = document.getElementById('notionStatus');
+  if (notionStatus) {
+    if (cloudServices.notion.isConfigured()) {
+      notionStatus.textContent = '✓ 已配置';
+      notionStatus.className = 'service-status status-connected';
+    } else {
+      notionStatus.textContent = '未配置';
+      notionStatus.className = 'service-status status-disconnected';
+    }
+  }
+}
+
+/**
+ * 打开云服务设置弹窗
+ */
+function openCloudSettingsModal() {
+  if (!cloudSettingsModal) return;
+  loadCloudServiceStatus();
+  cloudSettingsModal.classList.add('show');
+}
+
+/**
+ * 关闭云服务设置弹窗
+ */
+function closeCloudSettingsModal() {
+  if (cloudSettingsModal) {
+    cloudSettingsModal.classList.remove('show');
+  }
+}
+
+/**
+ * 设置云服务事件监听器
+ */
+function setupCloudSettingsListeners() {
+  const googleDriveAuthBtn = document.getElementById('googleDriveAuthBtn');
+  if (googleDriveAuthBtn) {
+    googleDriveAuthBtn.addEventListener('click', async () => {
+      const config = await chrome.storage.local.get(['googleDriveClientId']);
+      if (!config.googleDriveClientId) {
+        alert('请先在侧边栏中配置 Google Drive Client ID');
+        return;
+      }
+
+      try {
+        await cloudServices.googleDrive.init(config.googleDriveClientId);
+        await cloudServices.googleDrive.authenticate();
+        loadCloudServiceStatus();
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess('Google Drive 认证成功');
+        } else {
+          alert('Google Drive 认证成功');
+        }
+      } catch (error) {
+        console.error('Google Drive 认证失败:', error);
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showError('Google Drive 认证失败: ' + error.message);
+        } else {
+          alert('Google Drive 认证失败: ' + error.message);
+        }
+      }
+    });
+  }
+
+  const saveNotionConfigBtn = document.getElementById('saveNotionConfigBtn');
+  if (saveNotionConfigBtn) {
+    saveNotionConfigBtn.addEventListener('click', async () => {
+      const apiKey = document.getElementById('notionApiKey')?.value;
+      if (!apiKey) {
+        alert('请输入 Notion Integration Token');
+        return;
+      }
+
+      try {
+        await cloudServices.notion.init(apiKey);
+        loadCloudServiceStatus();
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess('Notion 配置已保存');
+        } else {
+          alert('Notion 配置已保存');
+        }
+      } catch (error) {
+        console.error('保存 Notion 配置失败:', error);
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showError('保存 Notion 配置失败: ' + error.message);
+        } else {
+          alert('保存 Notion 配置失败: ' + error.message);
+        }
+      }
+    });
+  }
+}
+
+/**
+ * 处理云服务导出
+ * @param {string} service - 服务名称
+ */
+async function handleCloudExport(service) {
+  const scope = downloadContext.scope || 'all';
+  const format = downloadFormatSelect ? downloadFormatSelect.value : 'md';
+  const includeImages = downloadIncludeImages ? downloadIncludeImages.checked : false;
+
+  // 获取按钮元素
+  const buttonMap = {
+    googleDrive: exportToGoogleDriveBtn,
+    notion: exportToNotionBtn,
+    obsidian: exportToObsidianBtn
+  };
+  const button = buttonMap[service];
+  const originalText = button ? button.textContent : '';
+
+  // 设置按钮加载状态
+  if (button) {
+    button.disabled = true;
+    button.classList.add('loading');
+    button.textContent = '导出中...';
+  }
+
+  try {
+    if (scope === 'single') {
+      const note = downloadContext.note;
+      if (!note) {
+        if (button) {
+          button.disabled = false;
+          button.classList.remove('loading');
+          button.textContent = originalText;
+        }
+        alert('未找到要导出的笔记');
+      return;
+    }
+
+      // 获取完整笔记（包含图片）
+      let fullNote = note;
+      // 如果笔记没有图片数据，尝试从存储加载
+      if (!note.images && note.id) {
+        fullNote = await storage.getNoteWithImages(note.id);
+        if (!fullNote) {
+          fullNote = note; // 如果加载失败，使用原始笔记
+        }
+      }
+
+      if (service === 'googleDrive') {
+        await cloudServices.exportToGoogleDrive(fullNote, format, includeImages);
+        if (button) {
+          button.classList.add('success');
+          setTimeout(() => {
+            button.classList.remove('success', 'loading');
+            button.disabled = false;
+            button.textContent = originalText;
+          }, 2000);
+        }
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess('✓ 已成功导出到 Google Drive', 3000);
+        } else {
+          alert('✓ 已成功导出到 Google Drive');
+        }
+      } else if (service === 'notion') {
+        await cloudServices.exportToNotion(fullNote);
+        if (button) {
+          button.classList.add('success');
+          setTimeout(() => {
+            button.classList.remove('success', 'loading');
+            button.disabled = false;
+            button.textContent = originalText;
+          }, 2000);
+        }
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess('✓ 已成功导出到 Notion', 3000);
+        } else {
+          alert('✓ 已成功导出到 Notion');
+        }
+      } else if (service === 'obsidian') {
+        await cloudServices.exportToObsidian(fullNote);
+        if (button) {
+          button.classList.add('success');
+          setTimeout(() => {
+            button.classList.remove('success', 'loading');
+            button.disabled = false;
+            button.textContent = originalText;
+          }, 2000);
+        }
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess('✓ 已成功导出到 Obsidian', 3000);
+        } else {
+          alert('✓ 已成功导出到 Obsidian');
+        }
+      }
+    } else {
+      const notes = await storage.getAllNotesWithImages(includeImages);
+
+      if (service === 'googleDrive') {
+        await cloudServices.exportToGoogleDrive(notes, format, includeImages);
+        if (button) {
+          button.classList.add('success');
+          setTimeout(() => {
+            button.classList.remove('success', 'loading');
+            button.disabled = false;
+            button.textContent = originalText;
+          }, 2000);
+        }
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess(`✓ 已成功导出 ${notes.length} 条笔记到 Google Drive`, 3000);
+        } else {
+          alert(`✓ 已成功导出 ${notes.length} 条笔记到 Google Drive`);
+        }
+      } else if (service === 'notion') {
+        const results = await cloudServices.exportToNotion(notes);
+        const successCount = results.filter(r => !r.error).length;
+        if (button) {
+          button.classList.add('success');
+      setTimeout(() => {
+            button.classList.remove('success', 'loading');
+            button.disabled = false;
+            button.textContent = originalText;
+          }, 2000);
+        }
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess(`✓ 已成功导出 ${successCount}/${notes.length} 条笔记到 Notion`, 3000);
+        } else {
+          alert(`✓ 已成功导出 ${successCount}/${notes.length} 条笔记到 Notion`);
+        }
+      } else if (service === 'obsidian') {
+        await cloudServices.exportToObsidian(notes);
+        if (button) {
+          button.classList.add('success');
+          setTimeout(() => {
+            button.classList.remove('success', 'loading');
+            button.disabled = false;
+            button.textContent = originalText;
+          }, 2000);
+        }
+        if (typeof errorHandler !== 'undefined') {
+          errorHandler.showSuccess(`✓ 已成功导出 ${notes.length} 条笔记到 Obsidian`, 3000);
+        } else {
+          alert(`✓ 已成功导出 ${notes.length} 条笔记到 Obsidian`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`导出到 ${service} 失败:`, error);
+    if (button) {
+      button.classList.add('error');
+      setTimeout(() => {
+        button.classList.remove('error', 'loading');
+        button.disabled = false;
+        button.textContent = originalText;
+      }, 2000);
+    }
+    if (typeof errorHandler !== 'undefined') {
+      errorHandler.showError(`✗ 导出到 ${service} 失败: ${error.message}`, 4000);
+    } else {
+      alert(`✗ 导出到 ${service} 失败: ${error.message}`);
+    }
+  }
+}

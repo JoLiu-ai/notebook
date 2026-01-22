@@ -85,12 +85,12 @@
   <div class="modal" id="viewNoteModal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="viewNoteTitle"></h2>
         <div class="modal-actions">
-          <button class="btn-secondary" id="editNoteBtn">编辑</button>
-          <button class="btn-danger" id="deleteNoteBtn">删除</button>
-          <button class="btn-secondary" id="closeViewBtn">关闭</button>
+          <button class="btn-secondary modal-icon-btn" id="editNoteBtn" title="编辑" aria-label="编辑">✎</button>
+          <button class="btn-danger modal-icon-btn" id="deleteNoteBtn" title="删除" aria-label="删除">🗑</button>
+          <button class="btn-secondary modal-icon-btn" id="closeViewBtn" title="关闭" aria-label="关闭">×</button>
         </div>
+        <h2 id="viewNoteTitle"></h2>
       </div>
       <div class="modal-body" id="viewNoteBody">
         <!-- 笔记详情将在这里显示 -->
@@ -125,10 +125,53 @@
             包含图片（文件会更大）
           </label>
         </div>
+        <div class="form-group" id="cloudServiceRow">
+          <label>导出到云服务</label>
+          <div class="cloud-services-buttons">
+            <button type="button" class="btn-cloud-service" id="exportToGoogleDriveBtn" title="导出到 Google Drive">
+              📁 Google Drive
+            </button>
+            <button type="button" class="btn-cloud-service" id="exportToNotionBtn" title="导出到 Notion">
+              📝 Notion
+            </button>
+            <button type="button" class="btn-cloud-service" id="exportToObsidianBtn" title="导出到 Obsidian">
+              🔗 Obsidian
+            </button>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
+        <button class="btn-secondary" id="cloudSettingsBtn">云服务设置</button>
         <button class="btn-secondary" id="cancelDownloadBtn">取消</button>
         <button class="btn-primary" id="confirmDownloadBtn">开始下载</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 云服务设置弹窗（简化版，在 popup 中只显示基本配置） -->
+  <div class="modal" id="cloudSettingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>云服务设置</h2>
+        <button class="close-btn" id="closeCloudSettingsBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 16px; color: #666;">完整设置请在侧边栏中配置</p>
+        <div class="form-group">
+          <h3>Google Drive</h3>
+          <button type="button" class="btn-secondary" id="googleDriveAuthBtn">认证</button>
+          <div id="googleDriveStatus" class="service-status"></div>
+        </div>
+        <div class="form-group">
+          <h3>Notion</h3>
+          <label for="notionApiKey">Integration Token</label>
+          <input type="password" id="notionApiKey" placeholder="输入 Notion Integration Token">
+          <button type="button" class="btn-secondary" id="saveNotionConfigBtn">保存</button>
+          <div id="notionStatus" class="service-status"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="closeCloudSettingsBtn2">关闭</button>
       </div>
     </div>
   </div>
@@ -137,7 +180,7 @@
   <script src="image-storage.js"></script>
   <script src="error-handler.js"></script>
   <script src="common.js"></script>
+  <script src="cloud-services.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
-

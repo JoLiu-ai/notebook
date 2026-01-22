@@ -130,12 +130,12 @@
   <div class="modal" id="viewNoteModal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="viewNoteTitle"></h2>
         <div class="modal-actions">
-          <button class="btn-secondary" id="editNoteBtn">编辑</button>
-          <button class="btn-danger" id="deleteNoteBtn">删除</button>
-          <button class="btn-secondary" id="closeViewBtn">关闭</button>
+          <button class="btn-secondary modal-icon-btn" id="editNoteBtn" title="编辑" aria-label="编辑">✎</button>
+          <button class="btn-danger modal-icon-btn" id="deleteNoteBtn" title="删除" aria-label="删除">🗑</button>
+          <button class="btn-secondary modal-icon-btn" id="closeViewBtn" title="关闭" aria-label="关闭">×</button>
         </div>
+        <h2 id="viewNoteTitle"></h2>
       </div>
       <div class="modal-body" id="viewNoteBody">
         <!-- 笔记详情将在这里显示 -->
@@ -170,10 +170,77 @@
             包含图片（文件会更大）
           </label>
         </div>
+        <div class="form-group" id="cloudServiceRow">
+          <label>导出到云服务</label>
+          <div class="cloud-services-buttons">
+            <button type="button" class="btn-cloud-service" id="exportToGoogleDriveBtn" title="导出到 Google Drive">
+              📁 Google Drive
+            </button>
+            <button type="button" class="btn-cloud-service" id="exportToNotionBtn" title="导出到 Notion">
+              📝 Notion
+            </button>
+            <button type="button" class="btn-cloud-service" id="exportToObsidianBtn" title="导出到 Obsidian">
+              🔗 Obsidian
+            </button>
+          </div>
+          <div class="form-hint">需要先配置云服务（点击设置按钮）</div>
+        </div>
       </div>
       <div class="modal-footer">
+        <button class="btn-secondary" id="cloudSettingsBtn">云服务设置</button>
         <button class="btn-secondary" id="cancelDownloadBtn">取消</button>
         <button class="btn-primary" id="confirmDownloadBtn">开始下载</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 云服务设置弹窗 -->
+  <div class="modal" id="cloudSettingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>云服务设置</h2>
+        <button class="close-btn" id="closeCloudSettingsBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Google Drive 设置 -->
+        <div class="form-group">
+          <h3>Google Drive</h3>
+          <label for="googleDriveClientId">Client ID</label>
+          <input type="text" id="googleDriveClientId" placeholder="输入 Google OAuth Client ID">
+          <div class="form-hint">
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank">获取 Client ID</a>
+          </div>
+          <button type="button" class="btn-secondary" id="googleDriveAuthBtn">认证</button>
+          <button type="button" class="btn-secondary" id="googleDriveLogoutBtn">登出</button>
+          <div id="googleDriveStatus" class="service-status"></div>
+        </div>
+
+        <!-- Notion 设置 -->
+        <div class="form-group">
+          <h3>Notion</h3>
+          <label for="notionApiKey">Integration Token</label>
+          <input type="password" id="notionApiKey" placeholder="输入 Notion Integration Token">
+          <div class="form-hint">
+            <a href="https://www.notion.so/my-integrations" target="_blank">创建 Integration</a>
+          </div>
+          <label for="notionDatabaseId">Database ID（可选）</label>
+          <input type="text" id="notionDatabaseId" placeholder="输入 Notion Database ID">
+          <button type="button" class="btn-secondary" id="saveNotionConfigBtn">保存配置</button>
+          <div id="notionStatus" class="service-status"></div>
+        </div>
+
+        <!-- Obsidian 设置 -->
+        <div class="form-group">
+          <h3>Obsidian</h3>
+          <label for="obsidianVaultPath">仓库路径（可选）</label>
+          <input type="text" id="obsidianVaultPath" placeholder="留空则使用 URI 协议">
+          <div class="form-hint">如果留空，将通过 Obsidian URI 协议打开新笔记</div>
+          <button type="button" class="btn-secondary" id="saveObsidianConfigBtn">保存配置</button>
+          <div id="obsidianStatus" class="service-status"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="closeCloudSettingsBtn2">关闭</button>
       </div>
     </div>
   </div>
@@ -182,7 +249,7 @@
   <script src="image-storage.js"></script>
   <script src="error-handler.js"></script>
   <script src="common.js"></script>
+  <script src="cloud-services.js"></script>
   <script src="sidebar.js"></script>
 </body>
 </html>
-
