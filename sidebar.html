@@ -225,6 +225,17 @@
           </div>
           <label for="notionDatabaseId">Database ID（可选）</label>
           <input type="text" id="notionDatabaseId" placeholder="输入 Notion Database ID">
+          <label class="checkbox-label" for="notionUseMcp">
+            <input type="checkbox" id="notionUseMcp">
+            使用 MCP 调用 Notion
+          </label>
+          <label for="notionMcpServerUrl">MCP Server URL</label>
+          <input type="text" id="notionMcpServerUrl" placeholder="https://your-mcp-server/mcp">
+          <label for="notionMcpApiKey">MCP API Key（可选）</label>
+          <input type="password" id="notionMcpApiKey" placeholder="可选">
+          <label for="notionMcpToolName">MCP Tool Name（可选）</label>
+          <input type="text" id="notionMcpToolName" placeholder="notion-create-pages">
+          <div class="form-hint">启用 MCP 后将通过 MCP Server 调用 Notion 工具</div>
           <button type="button" class="btn-secondary" id="saveNotionConfigBtn">保存配置</button>
           <div id="notionStatus" class="service-status"></div>
         </div>
@@ -249,6 +260,7 @@
   <script src="image-storage.js"></script>
   <script src="error-handler.js"></script>
   <script src="common.js"></script>
+  <script src="mcp-notion.js"></script>
   <script src="cloud-services.js"></script>
   <script src="sidebar.js"></script>
 </body>

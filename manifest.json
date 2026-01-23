@@ -38,9 +38,8 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sidebar.html", "sidebar.css", "sidebar.js", "storage.js", "image-storage.js", "error-handler.js", "common.js", "cloud-services.js"],
+      "resources": ["sidebar.html", "sidebar.css", "sidebar.js", "storage.js", "image-storage.js", "error-handler.js", "common.js", "mcp-notion.js", "cloud-services.js"],
       "matches": ["<all_urls>"]
     }
   ]
 }
-

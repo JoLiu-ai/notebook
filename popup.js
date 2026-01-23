@@ -1035,7 +1035,15 @@ async function loadCloudServiceStatus() {
 
   const notionStatus = document.getElementById('notionStatus');
   if (notionStatus) {
-    if (cloudServices.notion.isConfigured()) {
+    if (cloudServices.mcpNotion.isEnabled()) {
+      if (cloudServices.mcpNotion.isConfigured()) {
+        notionStatus.textContent = '✓ 已配置（MCP）';
+        notionStatus.className = 'service-status status-connected';
+      } else {
+        notionStatus.textContent = 'MCP 未配置';
+        notionStatus.className = 'service-status status-disconnected';
+      }
+    } else if (cloudServices.notion.isConfigured()) {
       notionStatus.textContent = '✓ 已配置';
       notionStatus.className = 'service-status status-connected';
     } else {
@@ -1050,6 +1058,7 @@ async function loadCloudServiceStatus() {
  */
 function openCloudSettingsModal() {
   if (!cloudSettingsModal) return;
+  loadCloudServiceConfig();
   loadCloudServiceStatus();
   cloudSettingsModal.classList.add('show');
 }
@@ -1060,6 +1069,44 @@ function openCloudSettingsModal() {
 function closeCloudSettingsModal() {
   if (cloudSettingsModal) {
     cloudSettingsModal.classList.remove('show');
+  }
+}
+
+/**
+ * 加载云服务配置
+ */
+async function loadCloudServiceConfig() {
+  const config = await chrome.storage.local.get([
+    'notionApiKey',
+    'mcpNotionServerUrl',
+    'mcpNotionApiKey',
+    'mcpNotionToolName',
+    'mcpNotionEnabled'
+  ]);
+
+  const notionApiKey = document.getElementById('notionApiKey');
+  if (notionApiKey) {
+    notionApiKey.value = config.notionApiKey || '';
+  }
+
+  const notionUseMcp = document.getElementById('notionUseMcp');
+  if (notionUseMcp) {
+    notionUseMcp.checked = !!config.mcpNotionEnabled;
+  }
+
+  const notionMcpServerUrl = document.getElementById('notionMcpServerUrl');
+  if (notionMcpServerUrl) {
+    notionMcpServerUrl.value = config.mcpNotionServerUrl || '';
+  }
+
+  const notionMcpApiKey = document.getElementById('notionMcpApiKey');
+  if (notionMcpApiKey) {
+    notionMcpApiKey.value = config.mcpNotionApiKey || '';
+  }
+
+  const notionMcpToolName = document.getElementById('notionMcpToolName');
+  if (notionMcpToolName) {
+    notionMcpToolName.value = config.mcpNotionToolName || 'notion-create-pages';
   }
 }
 
@@ -1100,13 +1147,31 @@ function setupCloudSettingsListeners() {
   if (saveNotionConfigBtn) {
     saveNotionConfigBtn.addEventListener('click', async () => {
       const apiKey = document.getElementById('notionApiKey')?.value;
-      if (!apiKey) {
+      const useMcp = document.getElementById('notionUseMcp')?.checked;
+      const mcpServerUrl = document.getElementById('notionMcpServerUrl')?.value?.trim();
+      const mcpApiKey = document.getElementById('notionMcpApiKey')?.value;
+      const mcpToolName = document.getElementById('notionMcpToolName')?.value?.trim();
+
+      if (useMcp) {
+        if (!mcpServerUrl) {
+          alert('请输入 MCP Server URL');
+          return;
+        }
+      } else if (!apiKey) {
         alert('请输入 Notion Integration Token');
         return;
       }
 
       try {
-        await cloudServices.notion.init(apiKey);
+        if (apiKey) {
+          await cloudServices.notion.init(apiKey);
+        }
+        await cloudServices.mcpNotion.init({
+          serverUrl: mcpServerUrl || null,
+          apiKey: mcpApiKey || null,
+          toolName: mcpToolName || 'notion-create-pages',
+          enabled: !!useMcp
+        });
         loadCloudServiceStatus();
         if (typeof errorHandler !== 'undefined') {
           errorHandler.showSuccess('Notion 配置已保存');

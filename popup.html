@@ -166,6 +166,16 @@
           <h3>Notion</h3>
           <label for="notionApiKey">Integration Token</label>
           <input type="password" id="notionApiKey" placeholder="输入 Notion Integration Token">
+          <label class="checkbox-label" for="notionUseMcp">
+            <input type="checkbox" id="notionUseMcp">
+            使用 MCP 调用 Notion
+          </label>
+          <label for="notionMcpServerUrl">MCP Server URL</label>
+          <input type="text" id="notionMcpServerUrl" placeholder="https://your-mcp-server/mcp">
+          <label for="notionMcpApiKey">MCP API Key（可选）</label>
+          <input type="password" id="notionMcpApiKey" placeholder="可选">
+          <label for="notionMcpToolName">MCP Tool Name（可选）</label>
+          <input type="text" id="notionMcpToolName" placeholder="notion-create-pages">
           <button type="button" class="btn-secondary" id="saveNotionConfigBtn">保存</button>
           <div id="notionStatus" class="service-status"></div>
         </div>
@@ -180,6 +190,7 @@
   <script src="image-storage.js"></script>
   <script src="error-handler.js"></script>
   <script src="common.js"></script>
+  <script src="mcp-notion.js"></script>
   <script src="cloud-services.js"></script>
   <script src="popup.js"></script>
 </body>

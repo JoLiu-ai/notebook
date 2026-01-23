@@ -587,6 +587,7 @@ class CloudServicesManager {
   constructor() {
     this.googleDrive = new GoogleDriveService();
     this.notion = new NotionService();
+    this.mcpNotion = new McpNotionService();
     this.obsidian = new ObsidianService();
   }
 
@@ -596,6 +597,7 @@ class CloudServicesManager {
   async init() {
     // 从存储中恢复配置
     await this.notion.restoreConfig();
+    await this.mcpNotion.restoreConfig();
     await this.obsidian.restoreConfig();
     
     // Google Drive 需要 Client ID，从配置中读取
@@ -642,6 +644,9 @@ class CloudServicesManager {
    */
   async exportToNotion(notes, databaseId = null) {
     const notesArray = Array.isArray(notes) ? notes : [notes];
+    if (this.mcpNotion.isEnabled() && this.mcpNotion.isConfigured()) {
+      return await this.mcpNotion.createPages(notesArray, databaseId);
+    }
     return await this.notion.createPages(notesArray, databaseId);
   }
 

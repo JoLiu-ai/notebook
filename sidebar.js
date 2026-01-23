@@ -1522,7 +1522,15 @@ async function loadCloudServiceStatus() {
   // Notion 状态
   const notionStatus = document.getElementById('notionStatus');
   if (notionStatus) {
-    if (cloudServices.notion.isConfigured()) {
+    if (cloudServices.mcpNotion.isEnabled()) {
+      if (cloudServices.mcpNotion.isConfigured()) {
+        notionStatus.textContent = '✓ 已配置（MCP）';
+        notionStatus.className = 'service-status status-connected';
+      } else {
+        notionStatus.textContent = 'MCP 未配置';
+        notionStatus.className = 'service-status status-disconnected';
+      }
+    } else if (cloudServices.notion.isConfigured()) {
       notionStatus.textContent = '✓ 已配置';
       notionStatus.className = 'service-status status-connected';
     } else {
@@ -1574,7 +1582,11 @@ async function loadCloudServiceConfig() {
     'googleDriveClientId',
     'notionApiKey',
     'notionDatabaseId',
-    'obsidianVaultPath'
+    'obsidianVaultPath',
+    'mcpNotionServerUrl',
+    'mcpNotionApiKey',
+    'mcpNotionToolName',
+    'mcpNotionEnabled'
   ]);
 
   const googleDriveClientId = document.getElementById('googleDriveClientId');
@@ -1590,6 +1602,26 @@ async function loadCloudServiceConfig() {
   const notionDatabaseId = document.getElementById('notionDatabaseId');
   if (notionDatabaseId) {
     notionDatabaseId.value = config.notionDatabaseId || '';
+  }
+
+  const notionUseMcp = document.getElementById('notionUseMcp');
+  if (notionUseMcp) {
+    notionUseMcp.checked = !!config.mcpNotionEnabled;
+  }
+
+  const notionMcpServerUrl = document.getElementById('notionMcpServerUrl');
+  if (notionMcpServerUrl) {
+    notionMcpServerUrl.value = config.mcpNotionServerUrl || '';
+  }
+
+  const notionMcpApiKey = document.getElementById('notionMcpApiKey');
+  if (notionMcpApiKey) {
+    notionMcpApiKey.value = config.mcpNotionApiKey || '';
+  }
+
+  const notionMcpToolName = document.getElementById('notionMcpToolName');
+  if (notionMcpToolName) {
+    notionMcpToolName.value = config.mcpNotionToolName || 'notion-create-pages';
   }
 
   const obsidianVaultPath = document.getElementById('obsidianVaultPath');
@@ -1653,14 +1685,34 @@ function setupCloudSettingsListeners() {
     saveNotionConfigBtn.addEventListener('click', async () => {
       const apiKey = document.getElementById('notionApiKey')?.value;
       const databaseId = document.getElementById('notionDatabaseId')?.value;
+      const useMcp = document.getElementById('notionUseMcp')?.checked;
+      const mcpServerUrl = document.getElementById('notionMcpServerUrl')?.value?.trim();
+      const mcpApiKey = document.getElementById('notionMcpApiKey')?.value;
+      const mcpToolName = document.getElementById('notionMcpToolName')?.value?.trim();
 
-      if (!apiKey) {
+      if (useMcp) {
+        if (!mcpServerUrl) {
+          alert('请输入 MCP Server URL');
+          return;
+        }
+      } else if (!apiKey) {
         alert('请输入 Notion Integration Token');
         return;
       }
 
       try {
-        await cloudServices.notion.init(apiKey, databaseId || null);
+        if (apiKey) {
+          await cloudServices.notion.init(apiKey, databaseId || null);
+        } else {
+          await chrome.storage.local.set({ notionDatabaseId: databaseId || null });
+        }
+        await cloudServices.mcpNotion.init({
+          serverUrl: mcpServerUrl || null,
+          apiKey: mcpApiKey || null,
+          databaseId: databaseId || null,
+          toolName: mcpToolName || 'notion-create-pages',
+          enabled: !!useMcp
+        });
         loadCloudServiceStatus();
         if (typeof errorHandler !== 'undefined') {
           errorHandler.showSuccess('Notion 配置已保存');
