@@ -17,6 +17,8 @@ const importBtn = document.getElementById('importBtn');
 const closeBtn = document.getElementById('closeBtn');
 const addNoteBtn = document.getElementById('addNoteBtn');
 const exportBtn = document.getElementById('exportBtn');
+const moreActionsBtn = document.getElementById('moreActionsBtn');
+const moreActionsMenu = document.getElementById('moreActionsMenu');
 const searchInput = document.getElementById('searchInput');
 const notesContainer = document.getElementById('notesContainer');
 const emptyState = document.getElementById('emptyState');
@@ -101,6 +103,7 @@ const capturePageBtn = document.getElementById('capturePageBtn');
 // 标签管理
 let currentTags = [];
 let allCategories = [];
+let categoryColorMap = {}; // 分类名称到颜色索引的映射
 
 // 文档库元素
 const totalNotesEl = document.getElementById('totalNotes');
@@ -108,6 +111,16 @@ const totalImagesEl = document.getElementById('totalImages');
 const storageSizeEl = document.getElementById('storageSize');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const libraryList = document.getElementById('libraryList');
+const libraryCategories = document.getElementById('libraryCategories');
+let currentCategoryFilter = null; // 当前选中的分类
+
+// 获取分类的颜色索引
+function getCategoryColorIndex(categoryName) {
+  if (!categoryName || !categoryColorMap[categoryName]) {
+    return 0; // 默认颜色
+  }
+  return categoryColorMap[categoryName] % 8;
+}
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'backupFolderSelected') {
@@ -137,6 +150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateSidebarSize();
   loadCloudServiceStatus(); // 加载云服务状态
   checkFirstLaunch(); // 检查是否首次启动
+  updateClearAllButtonVisibility(); // 更新清空按钮显示状态
 });
 
 // 加载设置
@@ -283,11 +297,13 @@ function setupResize() {
 // 设置事件监听
 function setupEventListeners() {
   // 切换位置
-  positionBtn.addEventListener('click', () => {
-    sidebarPosition = sidebarPosition === 'right' ? 'left' : 'right';
-    updateSidebarPosition();
-    saveSettings();
-  });
+  if (positionBtn) {
+    positionBtn.addEventListener('click', () => {
+      sidebarPosition = sidebarPosition === 'right' ? 'left' : 'right';
+      updateSidebarPosition();
+      saveSettings();
+    });
+  }
 
   // 关闭侧边栏
   closeBtn.addEventListener('click', () => {
@@ -313,11 +329,38 @@ function setupEventListeners() {
   // 添加笔记按钮
   addNoteBtn.addEventListener('click', openAddNoteModal);
 
+  // 更多操作下拉菜单
+  if (moreActionsBtn && moreActionsMenu) {
+    moreActionsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMoreActionsMenu();
+    });
+
+    // 点击菜单项时关闭菜单
+    const menuItems = moreActionsMenu.querySelectorAll('.menu-item');
+    menuItems.forEach(item => {
+      item.addEventListener('click', () => {
+        closeMoreActionsMenu();
+      });
+    });
+
+    // 点击外部时关闭菜单
+    document.addEventListener('click', (e) => {
+      if (!moreActionsMenu.contains(e.target) && e.target !== moreActionsBtn) {
+        closeMoreActionsMenu();
+      }
+    });
+  }
+
   // 导入数据按钮
-  importBtn.addEventListener('click', importData);
+  if (importBtn) {
+    importBtn.addEventListener('click', importData);
+  }
 
   // 导出数据按钮
-  exportBtn.addEventListener('click', () => openDownloadModal({ scope: 'all' }));
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => openDownloadModal({ scope: 'all' }));
+  }
 
   // 搜索
   searchInput.addEventListener('input', async (e) => {
@@ -590,6 +633,38 @@ function switchView(view) {
     notesView.classList.add('hidden');
     libraryView.classList.remove('hidden');
   }
+  
+  // 更新清空数据按钮的显示状态
+  updateClearAllButtonVisibility();
+}
+
+/**
+ * 切换更多操作菜单显示/隐藏
+ */
+function toggleMoreActionsMenu() {
+  if (moreActionsMenu) {
+    moreActionsMenu.classList.toggle('show');
+  }
+}
+
+/**
+ * 关闭更多操作菜单
+ */
+function closeMoreActionsMenu() {
+  if (moreActionsMenu) {
+    moreActionsMenu.classList.remove('show');
+  }
+}
+
+/**
+ * 更新清空数据按钮的显示状态
+ */
+function updateClearAllButtonVisibility() {
+  const clearAllBtn = document.getElementById('clearAllBtn');
+  if (clearAllBtn) {
+    const isLibraryView = sidebarContainer.classList.contains('library-active');
+    clearAllBtn.style.display = isLibraryView ? 'flex' : 'none';
+  }
 }
 
 // 加载文档库视图
@@ -603,6 +678,8 @@ async function loadLibraryView() {
   notes.forEach(note => {
     if (note.images && note.images.length > 0) {
       totalImages += note.images.length;
+    } else if (note.imageIds && note.imageIds.length > 0) {
+      totalImages += note.imageIds.length;
     }
   });
   totalImagesEl.textContent = totalImages;
@@ -613,20 +690,76 @@ async function loadLibraryView() {
   const sizeKB = (size / 1024).toFixed(2);
   storageSizeEl.textContent = `${sizeKB} KB`;
 
-  // 渲染文档库列表
+  // 渲染分类按钮
+  renderCategoryButtons(notes);
+  
+  // 渲染文档库列表（根据当前分类筛选）
   renderLibraryList(notes);
+}
+
+// 渲染分类按钮
+function renderCategoryButtons(notes) {
+  if (!libraryCategories) return;
+  
+  // 提取所有分类
+  const categories = new Set();
+  notes.forEach(note => {
+    if (note.category && note.category.trim()) {
+      categories.add(note.category.trim());
+    }
+  });
+  
+  const categoryArray = Array.from(categories).sort();
+  
+  libraryCategories.innerHTML = '';
+  
+  // 添加"全部"按钮
+  const allBtn = document.createElement('button');
+  allBtn.className = `category-btn all ${currentCategoryFilter === null ? 'active' : ''}`;
+  allBtn.textContent = '全部';
+  allBtn.addEventListener('click', async () => {
+    currentCategoryFilter = null;
+    const allNotes = await storage.getAllNotes();
+    renderCategoryButtons(allNotes);
+    renderLibraryList(allNotes);
+  });
+  libraryCategories.appendChild(allBtn);
+  
+  // 添加分类按钮
+  categoryArray.forEach((category, index) => {
+    const btn = document.createElement('button');
+    btn.className = `category-btn ${currentCategoryFilter === category ? 'active' : ''}`;
+    btn.setAttribute('data-category-index', index % 8); // 循环使用8种颜色
+    btn.textContent = category;
+    btn.addEventListener('click', async () => {
+      currentCategoryFilter = category;
+      const allNotes = await storage.getAllNotes();
+      renderCategoryButtons(allNotes);
+      renderLibraryList(allNotes);
+    });
+    libraryCategories.appendChild(btn);
+  });
 }
 
 // 渲染文档库列表
 function renderLibraryList(notes) {
   libraryList.innerHTML = '';
   
-  if (notes.length === 0) {
-    libraryList.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">暂无笔记</div>';
+  // 根据分类筛选笔记
+  let filteredNotes = notes;
+  if (currentCategoryFilter !== null) {
+    filteredNotes = notes.filter(note => note.category === currentCategoryFilter);
+  }
+
+  if (filteredNotes.length === 0) {
+    const emptyText = currentCategoryFilter 
+      ? `分类"${currentCategoryFilter}"下暂无笔记`
+      : '暂无笔记';
+    libraryList.innerHTML = `<div style="text-align: center; padding: 40px; color: #999;">${emptyText}</div>`;
     return;
   }
 
-  notes.forEach(note => {
+  filteredNotes.forEach(note => {
     const item = document.createElement('div');
     item.className = 'note-card';
     item.style.cursor = 'pointer';
@@ -637,6 +770,18 @@ function renderLibraryList(notes) {
     const title = document.createElement('div');
     title.className = 'note-title';
     title.textContent = note.title || '无标题';
+
+    // 显示分类标签
+    if (note.category) {
+      const categoryBadge = document.createElement('div');
+      categoryBadge.className = 'note-category-badge';
+      const colorIndex = getCategoryColorIndex(note.category);
+      categoryBadge.setAttribute('data-color-index', colorIndex);
+      categoryBadge.textContent = note.category;
+      categoryBadge.style.marginTop = '8px';
+      categoryBadge.style.marginBottom = '4px';
+      item.appendChild(categoryBadge);
+    }
 
     const meta = document.createElement('div');
     meta.className = 'note-meta';
@@ -649,7 +794,8 @@ function renderLibraryList(notes) {
     const parts = [];
     if (note.url) parts.push('🔗');
     if (note.text) parts.push(`📄 ${note.text.length}字`);
-    if (note.images && note.images.length > 0) parts.push(`🖼️ ${note.images.length}`);
+    const imageCount = (note.images && note.images.length) || (note.imageIds && note.imageIds.length) || 0;
+    if (imageCount > 0) parts.push(`🖼️ ${imageCount}`);
     info.textContent = parts.join(' ');
 
     meta.appendChild(date);
@@ -663,11 +809,52 @@ function renderLibraryList(notes) {
 
 // 加载当前页面信息
 async function loadCurrentPageInfo() {
+  const setIfEmpty = (el, value) => {
+    if (!el) return;
+    if (typeof el.value === 'string' && el.value.trim()) return;
+    el.value = value || '';
+  };
+
+  // 1) 优先通过父页面（content script）拿到真实网页 URL/标题
+  try {
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const pageInfo = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('timeout'));
+      }, 800);
+
+      const handler = (event) => {
+        const data = event?.data;
+        if (!data || data.type !== 'factNotebook:pageInfo' || data.requestId !== requestId) return;
+        cleanup();
+        resolve({ url: data.url, title: data.title });
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        window.removeEventListener('message', handler);
+      };
+
+      window.addEventListener('message', handler);
+      window.parent?.postMessage({ type: 'factNotebook:getPageInfo', requestId }, '*');
+    });
+
+    if (pageInfo?.url) {
+      setIfEmpty(noteUrl, pageInfo.url);
+      setIfEmpty(noteTitle, pageInfo.title || '');
+      return;
+    }
+  } catch (_) {
+    // ignore and fallback
+  }
+
+  // 2) fallback: 通过 chrome.tabs.query（在部分环境下可用）
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url) {
-      noteUrl.value = tab.url;
-      noteTitle.value = tab.title || '';
+      setIfEmpty(noteUrl, tab.url);
+      setIfEmpty(noteTitle, tab.title || '');
     }
   } catch (error) {
     console.error('获取当前页面信息失败:', error);
@@ -677,6 +864,20 @@ async function loadCurrentPageInfo() {
 // 加载笔记列表
 async function loadNotes(searchQuery = '') {
   const notes = await storage.searchNotes(searchQuery);
+  // 初始化分类颜色映射（如果还没有初始化）
+  if (Object.keys(categoryColorMap).length === 0) {
+    const allNotes = await storage.getAllNotes();
+    const categories = new Set();
+    allNotes.forEach(note => {
+      if (note.category && note.category.trim()) {
+        categories.add(note.category.trim());
+      }
+    });
+    const categoryArray = Array.from(categories).sort();
+    categoryArray.forEach((category, index) => {
+      categoryColorMap[category] = index;
+    });
+  }
   renderNotes(notes);
 }
 
@@ -719,6 +920,8 @@ function createNoteCard(note) {
   if (note.category) {
     const categorySpan = document.createElement('span');
     categorySpan.className = 'note-category-badge';
+    const colorIndex = getCategoryColorIndex(note.category);
+    categorySpan.setAttribute('data-color-index', colorIndex);
     categorySpan.textContent = note.category;
     metaTags.appendChild(categorySpan);
   }
@@ -1180,6 +1383,8 @@ async function viewNote(noteId) {
     if (note.category) {
       const categorySpan = document.createElement('span');
       categorySpan.className = 'note-category-badge';
+      const colorIndex = getCategoryColorIndex(note.category);
+      categorySpan.setAttribute('data-color-index', colorIndex);
       categorySpan.textContent = note.category;
       metaDiv.appendChild(categorySpan);
     }

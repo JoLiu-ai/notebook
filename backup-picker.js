@@ -5,7 +5,7 @@ const statusEl = document.getElementById('status');
 function setStatus(message, isError = false) {
   if (!statusEl) return;
   statusEl.textContent = message;
-  statusEl.style.color = isError ? '#d93025' : '#666';
+  statusEl.className = isError ? 'status error' : 'status';
 }
 
 async function handlePickFolder() {

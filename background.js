@@ -1,7 +1,7 @@
 // Background Service Worker
 importScripts('image-storage.js', 'backup-handle-storage.js', 'storage.js');
 
-const noteStorage = new NoteStorage();
+const noteStorageInstance = typeof noteStorage !== 'undefined' ? noteStorage : new NoteStorage();
 const CONTEXT_MENU_ID = 'saveToNote';
 const CONTEXT_MENU_TITLE = '保存到知识笔记';
 const CONTEXT_MENU_CONTEXTS = ['page', 'selection', 'image', 'link'];
@@ -232,7 +232,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       }
 
       // 保存笔记
-      await noteStorage.saveNote(note);
+      await noteStorageInstance.saveNote(note);
       
       // 显示通知
       chrome.notifications?.create({

@@ -37,6 +37,8 @@ const totalNotesEl = document.getElementById('totalNotes');
 const totalImagesEl = document.getElementById('totalImages');
 const storageSizeEl = document.getElementById('storageSize');
 const libraryList = document.getElementById('libraryList');
+const libraryCategories = document.getElementById('libraryCategories');
+let currentCategoryFilter = null; // 当前选中的分类
 
 // 表单元素
 const noteTitle = document.getElementById('noteTitle');
@@ -56,6 +58,7 @@ let currentTags = [];
 let allCategories = [];
 let selectedImages = [];
 let downloadContext = { scope: 'all', note: null };
+let categoryColorMap = {}; // 分类名称到颜色索引的映射
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
@@ -264,6 +267,20 @@ async function loadCurrentPageInfo() {
 // 加载笔记列表
 async function loadNotes(searchQuery = '') {
   const notes = await storage.searchNotes(searchQuery);
+  // 初始化分类颜色映射（如果还没有初始化）
+  if (Object.keys(categoryColorMap).length === 0) {
+    const allNotes = await storage.getAllNotes();
+    const categories = new Set();
+    allNotes.forEach(note => {
+      if (note.category && note.category.trim()) {
+        categories.add(note.category.trim());
+      }
+    });
+    const categoryArray = Array.from(categories).sort();
+    categoryArray.forEach((category, index) => {
+      categoryColorMap[category] = index;
+    });
+  }
   renderNotes(notes);
   if (libraryView && !libraryView.classList.contains('hidden')) {
     await loadLibraryView();
@@ -296,6 +313,8 @@ async function loadLibraryView() {
   notes.forEach(note => {
     if (note.images && note.images.length > 0) {
       totalImages += note.images.length;
+    } else if (note.imageIds && note.imageIds.length > 0) {
+      totalImages += note.imageIds.length;
     }
   });
   if (totalImagesEl) totalImagesEl.textContent = totalImages;
@@ -305,7 +324,69 @@ async function loadLibraryView() {
   const sizeKB = (size / 1024).toFixed(2);
   if (storageSizeEl) storageSizeEl.textContent = `${sizeKB} KB`;
 
+  // 渲染分类按钮
+  renderCategoryButtons(notes);
+  
+  // 渲染笔记列表（根据当前分类筛选）
   renderLibraryList(notes);
+}
+
+// 获取分类的颜色索引
+function getCategoryColorIndex(categoryName) {
+  if (!categoryName || !categoryColorMap[categoryName]) {
+    return 0; // 默认颜色
+  }
+  return categoryColorMap[categoryName] % 8;
+}
+
+// 渲染分类按钮
+function renderCategoryButtons(notes) {
+  if (!libraryCategories) return;
+  
+  // 提取所有分类
+  const categories = new Set();
+  notes.forEach(note => {
+    if (note.category && note.category.trim()) {
+      categories.add(note.category.trim());
+    }
+  });
+  
+  const categoryArray = Array.from(categories).sort();
+  
+  // 更新分类颜色映射
+  categoryColorMap = {};
+  categoryArray.forEach((category, index) => {
+    categoryColorMap[category] = index;
+  });
+  
+  libraryCategories.innerHTML = '';
+  
+  // 添加"全部"按钮
+  const allBtn = document.createElement('button');
+  allBtn.className = `category-btn all ${currentCategoryFilter === null ? 'active' : ''}`;
+  allBtn.textContent = '全部';
+  allBtn.addEventListener('click', async () => {
+    currentCategoryFilter = null;
+    const allNotes = await storage.getAllNotes();
+    renderCategoryButtons(allNotes);
+    renderLibraryList(allNotes);
+  });
+  libraryCategories.appendChild(allBtn);
+  
+  // 添加分类按钮
+  categoryArray.forEach((category, index) => {
+    const btn = document.createElement('button');
+    btn.className = `category-btn ${currentCategoryFilter === category ? 'active' : ''}`;
+    btn.setAttribute('data-category-index', index % 8); // 循环使用8种颜色
+    btn.textContent = category;
+    btn.addEventListener('click', async () => {
+      currentCategoryFilter = category;
+      const allNotes = await storage.getAllNotes();
+      renderCategoryButtons(allNotes);
+      renderLibraryList(allNotes);
+    });
+    libraryCategories.appendChild(btn);
+  });
 }
 
 // 渲染文档库列表
@@ -313,12 +394,21 @@ function renderLibraryList(notes) {
   if (!libraryList) return;
   libraryList.innerHTML = '';
 
-  if (notes.length === 0) {
-    libraryList.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">暂无笔记</div>';
+  // 根据分类筛选笔记
+  let filteredNotes = notes;
+  if (currentCategoryFilter !== null) {
+    filteredNotes = notes.filter(note => note.category === currentCategoryFilter);
+  }
+
+  if (filteredNotes.length === 0) {
+    const emptyText = currentCategoryFilter 
+      ? `分类"${currentCategoryFilter}"下暂无笔记`
+      : '暂无笔记';
+    libraryList.innerHTML = `<div style="text-align: center; padding: 40px; color: #999;">${emptyText}</div>`;
     return;
   }
 
-  notes.forEach(note => {
+  filteredNotes.forEach(note => {
     const item = document.createElement('div');
     item.className = 'note-card';
     item.style.cursor = 'pointer';
@@ -329,6 +419,18 @@ function renderLibraryList(notes) {
     const title = document.createElement('div');
     title.className = 'note-title';
     title.textContent = note.title || '无标题';
+
+    // 显示分类标签
+    if (note.category) {
+      const categoryBadge = document.createElement('div');
+      categoryBadge.className = 'note-category-badge';
+      const colorIndex = getCategoryColorIndex(note.category);
+      categoryBadge.setAttribute('data-color-index', colorIndex);
+      categoryBadge.textContent = note.category;
+      categoryBadge.style.marginTop = '8px';
+      categoryBadge.style.marginBottom = '4px';
+      item.appendChild(categoryBadge);
+    }
 
     const meta = document.createElement('div');
     meta.className = 'note-meta';
@@ -341,7 +443,8 @@ function renderLibraryList(notes) {
     const parts = [];
     if (note.url) parts.push('🔗');
     if (note.text) parts.push(`📄 ${note.text.length}字`);
-    if (note.images && note.images.length > 0) parts.push(`🖼️ ${note.images.length}`);
+    const imageCount = (note.images && note.images.length) || (note.imageIds && note.imageIds.length) || 0;
+    if (imageCount > 0) parts.push(`🖼️ ${imageCount}`);
     info.textContent = parts.join(' ');
 
     meta.appendChild(date);
@@ -392,6 +495,8 @@ function createNoteCard(note) {
   if (note.category) {
     const categorySpan = document.createElement('span');
     categorySpan.className = 'note-category-badge';
+    const colorIndex = getCategoryColorIndex(note.category);
+    categorySpan.setAttribute('data-color-index', colorIndex);
     categorySpan.textContent = note.category;
     metaTags.appendChild(categorySpan);
   }
@@ -824,6 +929,8 @@ async function viewNote(noteId) {
     if (note.category) {
       const categorySpan = document.createElement('span');
       categorySpan.className = 'note-category-badge';
+      const colorIndex = getCategoryColorIndex(note.category);
+      categorySpan.setAttribute('data-color-index', colorIndex);
       categorySpan.textContent = note.category;
       metaDiv.appendChild(categorySpan);
     }

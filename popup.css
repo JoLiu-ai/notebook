@@ -229,6 +229,47 @@ body {
   color: #4a5bdc;
 }
 
+/* 分类标签颜色（与分类按钮颜色对应） */
+.note-category-badge[data-color-index="0"] {
+  background: rgba(102, 126, 234, 0.15);
+  color: #667eea;
+}
+
+.note-category-badge[data-color-index="1"] {
+  background: rgba(118, 75, 162, 0.15);
+  color: #764ba2;
+}
+
+.note-category-badge[data-color-index="2"] {
+  background: rgba(240, 147, 251, 0.15);
+  color: #f093fb;
+}
+
+.note-category-badge[data-color-index="3"] {
+  background: rgba(79, 172, 254, 0.15);
+  color: #4facfe;
+}
+
+.note-category-badge[data-color-index="4"] {
+  background: rgba(67, 233, 123, 0.15);
+  color: #43e97b;
+}
+
+.note-category-badge[data-color-index="5"] {
+  background: rgba(250, 112, 154, 0.15);
+  color: #fa709a;
+}
+
+.note-category-badge[data-color-index="6"] {
+  background: rgba(254, 225, 64, 0.15);
+  color: #fee140;
+}
+
+.note-category-badge[data-color-index="7"] {
+  background: rgba(48, 207, 208, 0.15);
+  color: #30cfd0;
+}
+
 .note-tag-badge {
   display: inline-flex;
   align-items: center;
@@ -315,6 +356,120 @@ body {
 .stat-label {
   font-size: 12px;
   color: #666;
+}
+
+.library-categories {
+  padding: 12px;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+  white-space: nowrap;
+}
+
+.category-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.category-btn.active {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.category-btn.all {
+  background: #667eea;
+}
+
+.category-btn.all:hover {
+  background: #5568d3;
+}
+
+/* 为不同分类设置不同颜色 */
+.category-btn[data-category-index="0"] {
+  background: #667eea;
+}
+
+.category-btn[data-category-index="0"]:hover {
+  background: #5568d3;
+}
+
+.category-btn[data-category-index="1"] {
+  background: #764ba2;
+}
+
+.category-btn[data-category-index="1"]:hover {
+  background: #653a8a;
+}
+
+.category-btn[data-category-index="2"] {
+  background: #f093fb;
+}
+
+.category-btn[data-category-index="2"]:hover {
+  background: #e07ae8;
+}
+
+.category-btn[data-category-index="3"] {
+  background: #4facfe;
+}
+
+.category-btn[data-category-index="3"]:hover {
+  background: #2d8fe8;
+}
+
+.category-btn[data-category-index="4"] {
+  background: #43e97b;
+}
+
+.category-btn[data-category-index="4"]:hover {
+  background: #2dd165;
+}
+
+.category-btn[data-category-index="5"] {
+  background: #fa709a;
+}
+
+.category-btn[data-category-index="5"]:hover {
+  background: #f85a8a;
+}
+
+.category-btn[data-category-index="6"] {
+  background: #fee140;
+}
+
+.category-btn[data-category-index="6"]:hover {
+  background: #fdd428;
+}
+
+.category-btn[data-category-index="7"] {
+  background: #30cfd0;
+}
+
+.category-btn[data-category-index="7"]:hover {
+  background: #1fb5b6;
+}
+
+/* 如果分类超过8个，使用循环颜色 */
+.category-btn[data-category-index]:not([data-category-index="0"]):not([data-category-index="1"]):not([data-category-index="2"]):not([data-category-index="3"]):not([data-category-index="4"]):not([data-category-index="5"]):not([data-category-index="6"]):not([data-category-index="7"]) {
+  background: #667eea;
+}
+
+.category-btn[data-category-index]:not([data-category-index="0"]):not([data-category-index="1"]):not([data-category-index="2"]):not([data-category-index="3"]):not([data-category-index="4"]):not([data-category-index="5"]):not([data-category-index="6"]):not([data-category-index="7"]):hover {
+  background: #5568d3;
 }
 
 .library-list {

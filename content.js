@@ -89,6 +89,19 @@ function hideSidebar() {
 let isResizing = false;
 
 window.addEventListener('message', (event) => {
+  // 侧边栏 iframe 请求当前页面信息（URL/标题）
+  if (event.data && event.data.type === 'factNotebook:getPageInfo') {
+    if (sidebarIframe && sidebarIframe.contentWindow) {
+      sidebarIframe.contentWindow.postMessage({
+        type: 'factNotebook:pageInfo',
+        requestId: event.data.requestId,
+        url: window.location.href,
+        title: document.title
+      }, '*');
+    }
+    return;
+  }
+
   if (event.data.type === 'resizeSidebar') {
     const container = document.getElementById('fact-notebook-sidebar-container');
     if (container) {
