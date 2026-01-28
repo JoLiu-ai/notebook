@@ -17,6 +17,8 @@ const importBtn = document.getElementById('importBtn');
 const closeBtn = document.getElementById('closeBtn');
 const addNoteBtn = document.getElementById('addNoteBtn');
 const exportBtn = document.getElementById('exportBtn');
+const moreActionsBtn = document.getElementById('moreActionsBtn');
+const moreActionsMenu = document.getElementById('moreActionsMenu');
 const searchInput = document.getElementById('searchInput');
 const notesContainer = document.getElementById('notesContainer');
 const emptyState = document.getElementById('emptyState');
@@ -51,6 +53,39 @@ const libraryTab = document.getElementById('libraryTab');
 const notesView = document.getElementById('notesView');
 const libraryView = document.getElementById('libraryView');
 
+// 备份相关元素（使用安全的获取方式）
+const backupSettingsBtn = document.getElementById('backupSettingsBtn');
+const restoreBtn = document.getElementById('restoreBtn');
+const backupSettingsModal = document.getElementById('backupSettingsModal');
+const closeBackupSettingsBtn = document.getElementById('closeBackupSettingsBtn');
+const closeBackupSettingsBtn2 = document.getElementById('closeBackupSettingsBtn2');
+const autoBackupEnabled = document.getElementById('autoBackupEnabled');
+const backupLocation = document.getElementById('backupLocation');
+const selectBackupFolderBtn = document.getElementById('selectBackupFolderBtn');
+const backupFrequency = document.getElementById('backupFrequency');
+const cloudBackupEnabled = document.getElementById('cloudBackupEnabled');
+const createBackupBtn = document.getElementById('createBackupBtn');
+const saveBackupSettingsBtn = document.getElementById('saveBackupSettingsBtn');
+const backupStatus = document.getElementById('backupStatus');
+
+// 恢复相关元素
+const restoreModal = document.getElementById('restoreModal');
+const closeRestoreModalBtn = document.getElementById('closeRestoreModalBtn');
+const restoreDropZone = document.getElementById('restoreDropZone');
+const restoreFileInput = document.getElementById('restoreFileInput');
+const selectRestoreFileBtn = document.getElementById('selectRestoreFileBtn');
+const restoreMergeMode = document.getElementById('restoreMergeMode');
+const confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
+const cancelRestoreBtn = document.getElementById('cancelRestoreBtn');
+const restoreStatus = document.getElementById('restoreStatus');
+
+// 首次启动相关元素
+const firstLaunchModal = document.getElementById('firstLaunchModal');
+const firstLaunchRestoreBtn = document.getElementById('firstLaunchRestoreBtn');
+const firstLaunchSkipBtn = document.getElementById('firstLaunchSkipBtn');
+const emptyStateRestore = document.getElementById('emptyStateRestore');
+const emptyStateRestoreBtn = document.getElementById('emptyStateRestoreBtn');
+
 // 表单元素
 const noteTitle = document.getElementById('noteTitle');
 const noteUrl = document.getElementById('noteUrl');
@@ -68,6 +103,7 @@ const capturePageBtn = document.getElementById('capturePageBtn');
 // 标签管理
 let currentTags = [];
 let allCategories = [];
+let categoryColorMap = {}; // 分类名称到颜色索引的映射
 
 // 文档库元素
 const totalNotesEl = document.getElementById('totalNotes');
@@ -75,10 +111,37 @@ const totalImagesEl = document.getElementById('totalImages');
 const storageSizeEl = document.getElementById('storageSize');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const libraryList = document.getElementById('libraryList');
+const libraryCategories = document.getElementById('libraryCategories');
+let currentCategoryFilter = null; // 当前选中的分类
+
+// 获取分类的颜色索引
+function getCategoryColorIndex(categoryName) {
+  if (!categoryName || !categoryColorMap[categoryName]) {
+    return 0; // 默认颜色
+  }
+  return categoryColorMap[categoryName] % 8;
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === 'backupFolderSelected') {
+    if (backupLocation && message.folderName) {
+      backupLocation.value = message.folderName;
+    }
+    if (typeof backupHandleStorage !== 'undefined' && backupManager) {
+      backupHandleStorage.getHandle(backupManager.handleStorageKey).then((handle) => {
+        backupManager.backupFolderHandle = handle;
+      }).catch(error => {
+        console.warn('恢复备份文件夹句柄失败:', error);
+      });
+    }
+    showNotification('备份文件夹已选择', false);
+  }
+});
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
+  await backupManager.init(); // 初始化备份管理器
   await loadNotes();
   await cloudServices.init(); // 初始化云服务
   setupEventListeners();
@@ -86,6 +149,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadCurrentPageInfo();
   updateSidebarSize();
   loadCloudServiceStatus(); // 加载云服务状态
+  checkFirstLaunch(); // 检查是否首次启动
+  updateClearAllButtonVisibility(); // 更新清空按钮显示状态
 });
 
 // 加载设置
@@ -232,11 +297,13 @@ function setupResize() {
 // 设置事件监听
 function setupEventListeners() {
   // 切换位置
-  positionBtn.addEventListener('click', () => {
-    sidebarPosition = sidebarPosition === 'right' ? 'left' : 'right';
-    updateSidebarPosition();
-    saveSettings();
-  });
+  if (positionBtn) {
+    positionBtn.addEventListener('click', () => {
+      sidebarPosition = sidebarPosition === 'right' ? 'left' : 'right';
+      updateSidebarPosition();
+      saveSettings();
+    });
+  }
 
   // 关闭侧边栏
   closeBtn.addEventListener('click', () => {
@@ -252,9 +319,7 @@ function setupEventListeners() {
   });
 
   // 视图切换
-  notesTab.addEventListener('click', () => {
-    switchView('notes');
-  });
+  notesTab.addEventListener('click', () => switchView('notes'));
 
   libraryTab.addEventListener('click', () => {
     switchView('library');
@@ -262,19 +327,40 @@ function setupEventListeners() {
   });
 
   // 添加笔记按钮
-  addNoteBtn.addEventListener('click', () => {
-    openAddNoteModal();
-  });
+  addNoteBtn.addEventListener('click', openAddNoteModal);
+
+  // 更多操作下拉菜单
+  if (moreActionsBtn && moreActionsMenu) {
+    moreActionsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMoreActionsMenu();
+    });
+
+    // 点击菜单项时关闭菜单
+    const menuItems = moreActionsMenu.querySelectorAll('.menu-item');
+    menuItems.forEach(item => {
+      item.addEventListener('click', () => {
+        closeMoreActionsMenu();
+      });
+    });
+
+    // 点击外部时关闭菜单
+    document.addEventListener('click', (e) => {
+      if (!moreActionsMenu.contains(e.target) && e.target !== moreActionsBtn) {
+        closeMoreActionsMenu();
+      }
+    });
+  }
 
   // 导入数据按钮
-  importBtn.addEventListener('click', async () => {
-    await importData();
-  });
+  if (importBtn) {
+    importBtn.addEventListener('click', importData);
+  }
 
   // 导出数据按钮
-  exportBtn.addEventListener('click', async () => {
-    openDownloadModal({ scope: 'all' });
-  });
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => openDownloadModal({ scope: 'all' }));
+  }
 
   // 搜索
   searchInput.addEventListener('input', async (e) => {
@@ -369,9 +455,7 @@ function setupEventListeners() {
 
   // 文本内容展开/收起
   if (toggleTextExpandBtn) {
-    toggleTextExpandBtn.addEventListener('click', () => {
-      setTextExpandState(!isTextExpanded);
-    });
+    toggleTextExpandBtn.addEventListener('click', () => setTextExpandState(!isTextExpanded));
   }
 
   // 删除笔记
@@ -389,18 +473,12 @@ function setupEventListeners() {
   });
 
   // 选择图片
-  selectImageBtn.addEventListener('click', () => {
-    imageInput.click();
-  });
+  selectImageBtn.addEventListener('click', () => imageInput.click());
 
-  imageInput.addEventListener('change', (e) => {
-    handleImageSelect(e.target.files);
-  });
+  imageInput.addEventListener('change', (e) => handleImageSelect(e.target.files));
 
   // 捕获当前页面
-  capturePageBtn.addEventListener('click', async () => {
-    await captureCurrentPage();
-  });
+  capturePageBtn.addEventListener('click', captureCurrentPage);
 
   // 文档库操作
   clearAllBtn.addEventListener('click', async () => {
@@ -427,9 +505,7 @@ function setupEventListeners() {
 
   // 云服务相关事件
   if (cloudSettingsBtn) {
-    cloudSettingsBtn.addEventListener('click', () => {
-      openCloudSettingsModal();
-    });
+    cloudSettingsBtn.addEventListener('click', openCloudSettingsModal);
   }
   if (closeCloudSettingsBtn) {
     closeCloudSettingsBtn.addEventListener('click', closeCloudSettingsModal);
@@ -445,23 +521,91 @@ function setupEventListeners() {
     });
   }
   if (exportToGoogleDriveBtn) {
-    exportToGoogleDriveBtn.addEventListener('click', async () => {
-      await handleCloudExport('googleDrive');
-    });
+    exportToGoogleDriveBtn.addEventListener('click', () => handleCloudExport('googleDrive'));
   }
   if (exportToNotionBtn) {
-    exportToNotionBtn.addEventListener('click', async () => {
-      await handleCloudExport('notion');
-    });
+    exportToNotionBtn.addEventListener('click', () => handleCloudExport('notion'));
   }
   if (exportToObsidianBtn) {
-    exportToObsidianBtn.addEventListener('click', async () => {
-      await handleCloudExport('obsidian');
-    });
+    exportToObsidianBtn.addEventListener('click', () => handleCloudExport('obsidian'));
   }
 
   // 云服务设置事件
   setupCloudSettingsListeners();
+
+  // 备份设置事件
+  if (backupSettingsBtn) {
+    backupSettingsBtn.addEventListener('click', openBackupSettingsModal);
+  }
+  if (closeBackupSettingsBtn) {
+    closeBackupSettingsBtn.addEventListener('click', closeBackupSettingsModal);
+  }
+  if (closeBackupSettingsBtn2) {
+    closeBackupSettingsBtn2.addEventListener('click', closeBackupSettingsModal);
+  }
+  if (backupSettingsModal) {
+    backupSettingsModal.addEventListener('click', (e) => {
+      if (e.target === backupSettingsModal) {
+        closeBackupSettingsModal();
+      }
+    });
+  }
+  if (autoBackupEnabled) {
+    autoBackupEnabled.addEventListener('change', updateBackupSettingsVisibility);
+  }
+  if (selectBackupFolderBtn) {
+    selectBackupFolderBtn.addEventListener('click', selectBackupFolder);
+  }
+  if (createBackupBtn) {
+    createBackupBtn.addEventListener('click', handleCreateBackup);
+  }
+  if (saveBackupSettingsBtn) {
+    saveBackupSettingsBtn.addEventListener('click', saveBackupSettings);
+  }
+
+  // 恢复数据事件
+  if (restoreBtn) {
+    restoreBtn.addEventListener('click', openRestoreModal);
+  }
+  if (closeRestoreModalBtn) {
+    closeRestoreModalBtn.addEventListener('click', closeRestoreModal);
+  }
+  if (cancelRestoreBtn) {
+    cancelRestoreBtn.addEventListener('click', closeRestoreModal);
+  }
+  if (restoreModal) {
+    restoreModal.addEventListener('click', (e) => {
+      if (e.target === restoreModal) {
+        closeRestoreModal();
+      }
+    });
+  }
+  if (selectRestoreFileBtn) {
+    selectRestoreFileBtn.addEventListener('click', () => restoreFileInput.click());
+  }
+  if (restoreFileInput) {
+    restoreFileInput.addEventListener('change', handleRestoreFileSelect);
+  }
+  if (confirmRestoreBtn) {
+    confirmRestoreBtn.addEventListener('click', handleRestoreConfirm);
+  }
+
+  // 拖拽导入功能
+  setupDragAndDrop();
+
+  // 首次启动相关事件
+  if (firstLaunchRestoreBtn) {
+    firstLaunchRestoreBtn.addEventListener('click', () => {
+      closeFirstLaunchModal();
+      openRestoreModal();
+    });
+  }
+  if (firstLaunchSkipBtn) {
+    firstLaunchSkipBtn.addEventListener('click', closeFirstLaunchModal);
+  }
+  if (emptyStateRestoreBtn) {
+    emptyStateRestoreBtn.addEventListener('click', openRestoreModal);
+  }
 }
 
 // 设置文本内容展开状态
@@ -489,6 +633,38 @@ function switchView(view) {
     notesView.classList.add('hidden');
     libraryView.classList.remove('hidden');
   }
+  
+  // 更新清空数据按钮的显示状态
+  updateClearAllButtonVisibility();
+}
+
+/**
+ * 切换更多操作菜单显示/隐藏
+ */
+function toggleMoreActionsMenu() {
+  if (moreActionsMenu) {
+    moreActionsMenu.classList.toggle('show');
+  }
+}
+
+/**
+ * 关闭更多操作菜单
+ */
+function closeMoreActionsMenu() {
+  if (moreActionsMenu) {
+    moreActionsMenu.classList.remove('show');
+  }
+}
+
+/**
+ * 更新清空数据按钮的显示状态
+ */
+function updateClearAllButtonVisibility() {
+  const clearAllBtn = document.getElementById('clearAllBtn');
+  if (clearAllBtn) {
+    const isLibraryView = sidebarContainer.classList.contains('library-active');
+    clearAllBtn.style.display = isLibraryView ? 'flex' : 'none';
+  }
 }
 
 // 加载文档库视图
@@ -502,6 +678,8 @@ async function loadLibraryView() {
   notes.forEach(note => {
     if (note.images && note.images.length > 0) {
       totalImages += note.images.length;
+    } else if (note.imageIds && note.imageIds.length > 0) {
+      totalImages += note.imageIds.length;
     }
   });
   totalImagesEl.textContent = totalImages;
@@ -512,20 +690,76 @@ async function loadLibraryView() {
   const sizeKB = (size / 1024).toFixed(2);
   storageSizeEl.textContent = `${sizeKB} KB`;
 
-  // 渲染文档库列表
+  // 渲染分类按钮
+  renderCategoryButtons(notes);
+  
+  // 渲染文档库列表（根据当前分类筛选）
   renderLibraryList(notes);
+}
+
+// 渲染分类按钮
+function renderCategoryButtons(notes) {
+  if (!libraryCategories) return;
+  
+  // 提取所有分类
+  const categories = new Set();
+  notes.forEach(note => {
+    if (note.category && note.category.trim()) {
+      categories.add(note.category.trim());
+    }
+  });
+  
+  const categoryArray = Array.from(categories).sort();
+  
+  libraryCategories.innerHTML = '';
+  
+  // 添加"全部"按钮
+  const allBtn = document.createElement('button');
+  allBtn.className = `category-btn all ${currentCategoryFilter === null ? 'active' : ''}`;
+  allBtn.textContent = '全部';
+  allBtn.addEventListener('click', async () => {
+    currentCategoryFilter = null;
+    const allNotes = await storage.getAllNotes();
+    renderCategoryButtons(allNotes);
+    renderLibraryList(allNotes);
+  });
+  libraryCategories.appendChild(allBtn);
+  
+  // 添加分类按钮
+  categoryArray.forEach((category, index) => {
+    const btn = document.createElement('button');
+    btn.className = `category-btn ${currentCategoryFilter === category ? 'active' : ''}`;
+    btn.setAttribute('data-category-index', index % 8); // 循环使用8种颜色
+    btn.textContent = category;
+    btn.addEventListener('click', async () => {
+      currentCategoryFilter = category;
+      const allNotes = await storage.getAllNotes();
+      renderCategoryButtons(allNotes);
+      renderLibraryList(allNotes);
+    });
+    libraryCategories.appendChild(btn);
+  });
 }
 
 // 渲染文档库列表
 function renderLibraryList(notes) {
   libraryList.innerHTML = '';
   
-  if (notes.length === 0) {
-    libraryList.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">暂无笔记</div>';
+  // 根据分类筛选笔记
+  let filteredNotes = notes;
+  if (currentCategoryFilter !== null) {
+    filteredNotes = notes.filter(note => note.category === currentCategoryFilter);
+  }
+
+  if (filteredNotes.length === 0) {
+    const emptyText = currentCategoryFilter 
+      ? `分类"${currentCategoryFilter}"下暂无笔记`
+      : '暂无笔记';
+    libraryList.innerHTML = `<div style="text-align: center; padding: 40px; color: #999;">${emptyText}</div>`;
     return;
   }
 
-  notes.forEach(note => {
+  filteredNotes.forEach(note => {
     const item = document.createElement('div');
     item.className = 'note-card';
     item.style.cursor = 'pointer';
@@ -536,6 +770,18 @@ function renderLibraryList(notes) {
     const title = document.createElement('div');
     title.className = 'note-title';
     title.textContent = note.title || '无标题';
+
+    // 显示分类标签
+    if (note.category) {
+      const categoryBadge = document.createElement('div');
+      categoryBadge.className = 'note-category-badge';
+      const colorIndex = getCategoryColorIndex(note.category);
+      categoryBadge.setAttribute('data-color-index', colorIndex);
+      categoryBadge.textContent = note.category;
+      categoryBadge.style.marginTop = '8px';
+      categoryBadge.style.marginBottom = '4px';
+      item.appendChild(categoryBadge);
+    }
 
     const meta = document.createElement('div');
     meta.className = 'note-meta';
@@ -548,7 +794,8 @@ function renderLibraryList(notes) {
     const parts = [];
     if (note.url) parts.push('🔗');
     if (note.text) parts.push(`📄 ${note.text.length}字`);
-    if (note.images && note.images.length > 0) parts.push(`🖼️ ${note.images.length}`);
+    const imageCount = (note.images && note.images.length) || (note.imageIds && note.imageIds.length) || 0;
+    if (imageCount > 0) parts.push(`🖼️ ${imageCount}`);
     info.textContent = parts.join(' ');
 
     meta.appendChild(date);
@@ -562,11 +809,52 @@ function renderLibraryList(notes) {
 
 // 加载当前页面信息
 async function loadCurrentPageInfo() {
+  const setIfEmpty = (el, value) => {
+    if (!el) return;
+    if (typeof el.value === 'string' && el.value.trim()) return;
+    el.value = value || '';
+  };
+
+  // 1) 优先通过父页面（content script）拿到真实网页 URL/标题
+  try {
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const pageInfo = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('timeout'));
+      }, 800);
+
+      const handler = (event) => {
+        const data = event?.data;
+        if (!data || data.type !== 'factNotebook:pageInfo' || data.requestId !== requestId) return;
+        cleanup();
+        resolve({ url: data.url, title: data.title });
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        window.removeEventListener('message', handler);
+      };
+
+      window.addEventListener('message', handler);
+      window.parent?.postMessage({ type: 'factNotebook:getPageInfo', requestId }, '*');
+    });
+
+    if (pageInfo?.url) {
+      setIfEmpty(noteUrl, pageInfo.url);
+      setIfEmpty(noteTitle, pageInfo.title || '');
+      return;
+    }
+  } catch (_) {
+    // ignore and fallback
+  }
+
+  // 2) fallback: 通过 chrome.tabs.query（在部分环境下可用）
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url) {
-      noteUrl.value = tab.url;
-      noteTitle.value = tab.title || '';
+      setIfEmpty(noteUrl, tab.url);
+      setIfEmpty(noteTitle, tab.title || '');
     }
   } catch (error) {
     console.error('获取当前页面信息失败:', error);
@@ -576,6 +864,20 @@ async function loadCurrentPageInfo() {
 // 加载笔记列表
 async function loadNotes(searchQuery = '') {
   const notes = await storage.searchNotes(searchQuery);
+  // 初始化分类颜色映射（如果还没有初始化）
+  if (Object.keys(categoryColorMap).length === 0) {
+    const allNotes = await storage.getAllNotes();
+    const categories = new Set();
+    allNotes.forEach(note => {
+      if (note.category && note.category.trim()) {
+        categories.add(note.category.trim());
+      }
+    });
+    const categoryArray = Array.from(categories).sort();
+    categoryArray.forEach((category, index) => {
+      categoryColorMap[category] = index;
+    });
+  }
   renderNotes(notes);
 }
 
@@ -618,6 +920,8 @@ function createNoteCard(note) {
   if (note.category) {
     const categorySpan = document.createElement('span');
     categorySpan.className = 'note-category-badge';
+    const colorIndex = getCategoryColorIndex(note.category);
+    categorySpan.setAttribute('data-color-index', colorIndex);
     categorySpan.textContent = note.category;
     metaTags.appendChild(categorySpan);
   }
@@ -853,6 +1157,9 @@ async function saveNote() {
 
     await storage.saveNote(note);
     
+    // 触发自动备份
+    await triggerAutoBackup();
+    
     if (typeof errorHandler !== 'undefined') {
       errorHandler.showSuccess('保存成功');
     }
@@ -1023,6 +1330,10 @@ async function autoSaveNote() {
     }
 
     await storage.saveNote(note);
+    
+    // 触发自动备份
+    await triggerAutoBackup();
+    
     // 更新 currentViewingNoteId 为保存后的 ID（如果是新建）
     if (currentViewingNoteId && currentViewingNoteId.startsWith('temp_')) {
       currentViewingNoteId = note.id;
@@ -1072,6 +1383,8 @@ async function viewNote(noteId) {
     if (note.category) {
       const categorySpan = document.createElement('span');
       categorySpan.className = 'note-category-badge';
+      const colorIndex = getCategoryColorIndex(note.category);
+      categorySpan.setAttribute('data-color-index', colorIndex);
       categorySpan.textContent = note.category;
       metaDiv.appendChild(categorySpan);
     }
@@ -1393,28 +1706,22 @@ function closeDownloadModal() {
 }
 
 function getDownloadFormatOptions(scope, mode) {
-  if (scope === 'single') {
-    return [
-      { value: 'json', label: 'JSON - 原始数据格式' },
-      { value: 'md', label: 'Markdown - Markdown 格式' },
-      { value: 'pdf', label: 'PDF - PDF 文档' },
-      { value: 'docx', label: 'DOCX - Word 文档' }
-    ];
-  }
-
-  if (mode === 'batch') {
-    return [
-      { value: 'json', label: 'JSON - 原始数据格式' },
-      { value: 'md', label: 'Markdown - Markdown 格式' }
-    ];
-  }
-
-  return [
+  const baseOptions = [
     { value: 'json', label: 'JSON - 原始数据格式' },
-    { value: 'md', label: 'Markdown - Markdown 格式' },
+    { value: 'md', label: 'Markdown - Markdown 格式' }
+  ];
+
+  const extendedOptions = [
+    ...baseOptions,
     { value: 'pdf', label: 'PDF - PDF 文档' },
     { value: 'docx', label: 'DOCX - Word 文档' }
   ];
+
+  if (mode === 'batch') {
+    return baseOptions;
+  }
+
+  return extendedOptions;
 }
 
 function updateDownloadFormatOptions() {
@@ -1455,47 +1762,57 @@ async function handleDownloadConfirm() {
   const format = downloadFormatSelect.value;
   const includeImages = downloadIncludeImages ? downloadIncludeImages.checked : false;
 
-  if (scope === 'single') {
-    const note = downloadContext.note;
-    if (!note) {
-      alert('未找到要下载的笔记');
-      return;
-    }
+  if (scope === 'single' && !downloadContext.note) {
+    alert('未找到要下载的笔记');
+    return;
   }
 
   closeDownloadModal();
 
   if (scope === 'single') {
     const note = downloadContext.note;
-    if (format === 'json') {
-      await downloadNoteAsJSON(note, includeImages);
-    } else if (format === 'md') {
-      await downloadNoteAsMarkdown(note, includeImages);
-    } else if (format === 'pdf') {
-      await exportSingleNoteToPDF(note);
-    } else if (format === 'docx') {
-      await exportSingleNoteToDOCX(note);
+    switch (format) {
+      case 'json':
+        await downloadNoteAsJSON(note, includeImages);
+        break;
+      case 'md':
+        await downloadNoteAsMarkdown(note, includeImages);
+        break;
+      case 'pdf':
+        await exportSingleNoteToPDF(note);
+        break;
+      case 'docx':
+        await exportSingleNoteToDOCX(note);
+        break;
     }
     return;
   }
 
   if (mode === 'batch') {
-    if (format === 'json') {
-      await batchDownloadNotesAsJSON(storage, includeImages);
-    } else if (format === 'md') {
-      await batchDownloadNotesAsMarkdown(storage, includeImages);
+    switch (format) {
+      case 'json':
+        await batchDownloadNotesAsJSON(storage, includeImages);
+        break;
+      case 'md':
+        await batchDownloadNotesAsMarkdown(storage, includeImages);
+        break;
     }
     return;
   }
 
-  if (format === 'json') {
-    await exportToJSON(storage, { includeImages });
-  } else if (format === 'md') {
-    await exportToMarkdown(storage, includeImages);
-  } else if (format === 'pdf') {
-    await exportToPDF(storage);
-  } else if (format === 'docx') {
-    await exportToDOCX(storage);
+  switch (format) {
+    case 'json':
+      await exportToJSON(storage, { includeImages });
+      break;
+    case 'md':
+      await exportToMarkdown(storage, includeImages);
+      break;
+    case 'pdf':
+      await exportToPDF(storage);
+      break;
+    case 'docx':
+      await exportToDOCX(storage);
+      break;
   }
 }
 
@@ -1503,53 +1820,47 @@ async function handleDownloadConfirm() {
 
 // ==================== 云服务功能 ====================
 
+// 设置服务状态显示的辅助函数
+function setServiceStatus(element, isConnected, text) {
+  if (!element) return;
+  element.textContent = text;
+  element.className = isConnected
+    ? 'service-status status-connected'
+    : 'service-status status-disconnected';
+}
+
+// 获取 Notion 状态信息
+function getNotionStatusInfo() {
+  if (cloudServices.mcpNotion.isEnabled()) {
+    const isConfigured = cloudServices.mcpNotion.isConfigured();
+    return {
+      isConnected: isConfigured,
+      text: isConfigured ? '✓ 已配置（MCP）' : 'MCP 未配置'
+    };
+  }
+
+  const isConfigured = cloudServices.notion.isConfigured();
+  return {
+    isConnected: isConfigured,
+    text: isConfigured ? '✓ 已配置' : '未配置'
+  };
+}
+
 /**
  * 加载云服务状态
  */
 async function loadCloudServiceStatus() {
-  // Google Drive 状态
   const googleDriveStatus = document.getElementById('googleDriveStatus');
-  if (googleDriveStatus) {
-    if (cloudServices.googleDrive.isAuthenticated()) {
-      googleDriveStatus.textContent = '✓ 已认证';
-      googleDriveStatus.className = 'service-status status-connected';
-    } else {
-      googleDriveStatus.textContent = '未认证';
-      googleDriveStatus.className = 'service-status status-disconnected';
-    }
-  }
+  const isGoogleAuth = cloudServices.googleDrive.isAuthenticated();
+  setServiceStatus(googleDriveStatus, isGoogleAuth, isGoogleAuth ? '✓ 已认证' : '未认证');
 
-  // Notion 状态
   const notionStatus = document.getElementById('notionStatus');
-  if (notionStatus) {
-    if (cloudServices.mcpNotion.isEnabled()) {
-      if (cloudServices.mcpNotion.isConfigured()) {
-        notionStatus.textContent = '✓ 已配置（MCP）';
-        notionStatus.className = 'service-status status-connected';
-      } else {
-        notionStatus.textContent = 'MCP 未配置';
-        notionStatus.className = 'service-status status-disconnected';
-      }
-    } else if (cloudServices.notion.isConfigured()) {
-      notionStatus.textContent = '✓ 已配置';
-      notionStatus.className = 'service-status status-connected';
-    } else {
-      notionStatus.textContent = '未配置';
-      notionStatus.className = 'service-status status-disconnected';
-    }
-  }
+  const notionInfo = getNotionStatusInfo();
+  setServiceStatus(notionStatus, notionInfo.isConnected, notionInfo.text);
 
-  // Obsidian 状态
   const obsidianStatus = document.getElementById('obsidianStatus');
-  if (obsidianStatus) {
-    if (cloudServices.obsidian.isConfigured()) {
-      obsidianStatus.textContent = '✓ 已配置';
-      obsidianStatus.className = 'service-status status-connected';
-    } else {
-      obsidianStatus.textContent = '未配置';
-      obsidianStatus.className = 'service-status status-disconnected';
-    }
-  }
+  const isObsidianConfigured = cloudServices.obsidian.isConfigured();
+  setServiceStatus(obsidianStatus, isObsidianConfigured, isObsidianConfigured ? '✓ 已配置' : '未配置');
 }
 
 /**
@@ -1756,6 +2067,53 @@ function setupCloudSettingsListeners() {
   }
 }
 
+// 按钮状态管理辅助函数
+function setButtonLoading(button) {
+  if (!button) return;
+  button.disabled = true;
+  button.classList.add('loading');
+  button.textContent = '导出中...';
+}
+
+function setButtonSuccess(button, originalText) {
+  if (!button) return;
+  button.classList.add('success');
+  setTimeout(() => {
+    button.classList.remove('success', 'loading');
+    button.disabled = false;
+    button.textContent = originalText;
+  }, 2000);
+}
+
+function setButtonError(button, originalText) {
+  if (!button) return;
+  button.classList.add('error');
+  setTimeout(() => {
+    button.classList.remove('error', 'loading');
+    button.disabled = false;
+    button.textContent = originalText;
+  }, 2000);
+}
+
+function resetButton(button, originalText) {
+  if (!button) return;
+  button.disabled = false;
+  button.classList.remove('loading');
+  button.textContent = originalText;
+}
+
+function showNotification(message, isError = false) {
+  if (typeof errorHandler !== 'undefined') {
+    if (isError) {
+      errorHandler.showError(message, 4000);
+    } else {
+      errorHandler.showSuccess(message, 3000);
+    }
+  } else {
+    alert(message);
+  }
+}
+
 /**
  * 处理云服务导出
  * @param {string} service - 服务名称（'googleDrive', 'notion', 'obsidian'）
@@ -1765,157 +2123,519 @@ async function handleCloudExport(service) {
   const format = downloadFormatSelect ? downloadFormatSelect.value : 'md';
   const includeImages = downloadIncludeImages ? downloadIncludeImages.checked : false;
 
-  // 获取按钮元素
   const buttonMap = {
     googleDrive: exportToGoogleDriveBtn,
     notion: exportToNotionBtn,
     obsidian: exportToObsidianBtn
   };
+  const serviceNames = {
+    googleDrive: 'Google Drive',
+    notion: 'Notion',
+    obsidian: 'Obsidian'
+  };
+
   const button = buttonMap[service];
+  const serviceName = serviceNames[service];
   const originalText = button ? button.textContent : '';
 
-  // 设置按钮加载状态
-  if (button) {
-    button.disabled = true;
-    button.classList.add('loading');
-    button.textContent = '导出中...';
-  }
+  setButtonLoading(button);
 
   try {
+    let notesData;
+    let successMessage;
+
     if (scope === 'single') {
       const note = downloadContext.note;
       if (!note) {
-        if (button) {
-          button.disabled = false;
-          button.classList.remove('loading');
-          button.textContent = originalText;
-        }
+        resetButton(button, originalText);
         alert('未找到要导出的笔记');
-      return;
+        return;
+      }
+
+      notesData = note;
+      if (!note.images && note.id) {
+        notesData = await storage.getNoteWithImages(note.id) || note;
+      }
+      successMessage = `已成功导出到 ${serviceName}`;
+    } else {
+      notesData = await storage.getAllNotesWithImages(includeImages);
+      successMessage = `已成功导出 ${notesData.length} 条笔记到 ${serviceName}`;
     }
 
-      // 获取完整笔记（包含图片）
-      let fullNote = note;
-      // 如果笔记没有图片数据，尝试从存储加载
-      if (!note.images && note.id) {
-        fullNote = await storage.getNoteWithImages(note.id);
-        if (!fullNote) {
-          fullNote = note; // 如果加载失败，使用原始笔记
-        }
-      }
-
-      if (service === 'googleDrive') {
-        const result = await cloudServices.exportToGoogleDrive(fullNote, format, includeImages);
-        if (button) {
-          button.classList.add('success');
-          setTimeout(() => {
-            button.classList.remove('success', 'loading');
-            button.disabled = false;
-            button.textContent = originalText;
-          }, 2000);
-        }
-        if (typeof errorHandler !== 'undefined') {
-          errorHandler.showSuccess('✓ 已成功导出到 Google Drive', 3000);
-        } else {
-          alert('✓ 已成功导出到 Google Drive');
-        }
-      } else if (service === 'notion') {
-        await cloudServices.exportToNotion(fullNote);
-        if (button) {
-          button.classList.add('success');
-          setTimeout(() => {
-            button.classList.remove('success', 'loading');
-            button.disabled = false;
-            button.textContent = originalText;
-          }, 2000);
-        }
-        if (typeof errorHandler !== 'undefined') {
-          errorHandler.showSuccess('✓ 已成功导出到 Notion', 3000);
-        } else {
-          alert('✓ 已成功导出到 Notion');
-        }
-      } else if (service === 'obsidian') {
-        await cloudServices.exportToObsidian(fullNote);
-        if (button) {
-          button.classList.add('success');
-          setTimeout(() => {
-            button.classList.remove('success', 'loading');
-            button.disabled = false;
-            button.textContent = originalText;
-          }, 2000);
-        }
-        if (typeof errorHandler !== 'undefined') {
-          errorHandler.showSuccess('✓ 已成功导出到 Obsidian', 3000);
-        } else {
-          alert('✓ 已成功导出到 Obsidian');
-        }
-      }
-    } else {
-      // 导出所有笔记
-      const notes = await storage.getAllNotesWithImages(includeImages);
-
-      if (service === 'googleDrive') {
-        await cloudServices.exportToGoogleDrive(notes, format, includeImages);
-        if (button) {
-          button.classList.add('success');
-          setTimeout(() => {
-            button.classList.remove('success', 'loading');
-            button.disabled = false;
-            button.textContent = originalText;
-          }, 2000);
-        }
-        if (typeof errorHandler !== 'undefined') {
-          errorHandler.showSuccess(`✓ 已成功导出 ${notes.length} 条笔记到 Google Drive`, 3000);
-        } else {
-          alert(`✓ 已成功导出 ${notes.length} 条笔记到 Google Drive`);
-        }
-      } else if (service === 'notion') {
-        const results = await cloudServices.exportToNotion(notes);
+    if (service === 'googleDrive') {
+      await cloudServices.exportToGoogleDrive(notesData, format, includeImages);
+    } else if (service === 'notion') {
+      const results = await cloudServices.exportToNotion(notesData);
+      if (scope !== 'single') {
         const successCount = results.filter(r => !r.error).length;
-        if (button) {
-          button.classList.add('success');
-      setTimeout(() => {
-            button.classList.remove('success', 'loading');
-            button.disabled = false;
-            button.textContent = originalText;
-          }, 2000);
-        }
-        if (typeof errorHandler !== 'undefined') {
-          errorHandler.showSuccess(`✓ 已成功导出 ${successCount}/${notes.length} 条笔记到 Notion`, 3000);
-        } else {
-          alert(`✓ 已成功导出 ${successCount}/${notes.length} 条笔记到 Notion`);
-        }
-      } else if (service === 'obsidian') {
-        await cloudServices.exportToObsidian(notes);
-        if (button) {
-          button.classList.add('success');
-          setTimeout(() => {
-            button.classList.remove('success', 'loading');
-            button.disabled = false;
-            button.textContent = originalText;
-          }, 2000);
-        }
-        if (typeof errorHandler !== 'undefined') {
-          errorHandler.showSuccess(`✓ 已成功导出 ${notes.length} 条笔记到 Obsidian`, 3000);
-        } else {
-          alert(`✓ 已成功导出 ${notes.length} 条笔记到 Obsidian`);
-        }
+        successMessage = `已成功导出 ${successCount}/${notesData.length} 条笔记到 ${serviceName}`;
+      }
+    } else if (service === 'obsidian') {
+      await cloudServices.exportToObsidian(notesData);
+    }
+
+    setButtonSuccess(button, originalText);
+    showNotification(`✓ ${successMessage}`);
+  } catch (error) {
+    console.error(`导出到 ${service} 失败:`, error);
+    setButtonError(button, originalText);
+    showNotification(`✗ 导出到 ${serviceName} 失败: ${error.message}`, true);
+  }
+}
+
+// ==================== 备份和恢复功能 ====================
+
+let selectedRestoreFile = null;
+
+/**
+ * 检查是否首次启动
+ */
+async function checkFirstLaunch() {
+  try {
+    const notes = await storage.getAllNotes();
+    const hasSeenFirstLaunch = await chrome.storage.local.get(['hasSeenFirstLaunch']);
+    
+    if (notes.length === 0 && !hasSeenFirstLaunch.hasSeenFirstLaunch) {
+      // 显示首次启动提示
+      if (firstLaunchModal) {
+        firstLaunchModal.classList.add('show');
+      }
+      // 在空状态中显示恢复按钮
+      if (emptyStateRestore) {
+        emptyStateRestore.style.display = 'block';
+      }
+    } else if (notes.length === 0) {
+      // 如果已经看过提示但数据为空，显示恢复按钮
+      if (emptyStateRestore) {
+        emptyStateRestore.style.display = 'block';
       }
     }
   } catch (error) {
-    console.error(`导出到 ${service} 失败:`, error);
-    if (button) {
-      button.classList.add('error');
-      setTimeout(() => {
-        button.classList.remove('error', 'loading');
-        button.disabled = false;
-        button.textContent = originalText;
-      }, 2000);
+    console.error('检查首次启动失败:', error);
+  }
+}
+
+/**
+ * 关闭首次启动提示
+ */
+function closeFirstLaunchModal() {
+  if (firstLaunchModal) {
+    firstLaunchModal.classList.remove('show');
+    chrome.storage.local.set({ hasSeenFirstLaunch: true });
+  }
+}
+
+/**
+ * 打开备份设置弹窗
+ */
+async function openBackupSettingsModal() {
+  if (!backupSettingsModal) return;
+  
+  // 加载当前设置
+  await loadBackupSettings();
+  updateBackupSettingsVisibility();
+  
+  backupSettingsModal.classList.add('show');
+}
+
+/**
+ * 关闭备份设置弹窗
+ */
+function closeBackupSettingsModal() {
+  if (backupSettingsModal) {
+    backupSettingsModal.classList.remove('show');
+  }
+}
+
+/**
+ * 加载备份设置
+ */
+async function loadBackupSettings() {
+  const config = await chrome.storage.local.get([
+    'autoBackupEnabled',
+    'backupFrequency',
+    'cloudBackupEnabled',
+    'backupFolderPath'
+  ]);
+
+  if (autoBackupEnabled) {
+    autoBackupEnabled.checked = config.autoBackupEnabled || false;
+  }
+  if (backupFrequency) {
+    backupFrequency.value = config.backupFrequency || 'every-save';
+  }
+  if (cloudBackupEnabled) {
+    cloudBackupEnabled.checked = config.cloudBackupEnabled || false;
+  }
+  if (backupLocation && config.backupFolderPath) {
+    backupLocation.value = config.backupFolderPath;
+  }
+}
+
+/**
+ * 更新备份设置可见性
+ */
+function updateBackupSettingsVisibility() {
+  const enabled = autoBackupEnabled && autoBackupEnabled.checked;
+  const locationGroup = document.getElementById('backupLocationGroup');
+  const frequencyGroup = document.getElementById('backupFrequencyGroup');
+  
+  if (locationGroup) {
+    locationGroup.classList.toggle('show', enabled);
+  }
+  if (frequencyGroup) {
+    frequencyGroup.classList.toggle('show', enabled);
+  }
+}
+
+async function openBackupPickerWindow() {
+  const url = chrome.runtime.getURL('backup-picker.html');
+  try {
+    await chrome.windows.create({
+      url,
+      type: 'popup',
+      width: 460,
+      height: 320
+    });
+  } catch (error) {
+    console.warn('打开备份选择窗口失败，尝试新标签页:', error);
+    await chrome.tabs.create({ url });
+  }
+  showNotification('请在新窗口中选择备份文件夹', false);
+}
+
+/**
+ * 选择备份文件夹
+ */
+async function selectBackupFolder() {
+  try {
+    if (window.top !== window) {
+      await openBackupPickerWindow();
+      return;
     }
-    if (typeof errorHandler !== 'undefined') {
-      errorHandler.showError(`✗ 导出到 ${service} 失败: ${error.message}`, 4000);
+    const handle = await backupManager.selectBackupFolder();
+    if (handle) {
+      if (backupLocation) {
+        backupLocation.value = handle.name;
+      }
+      showNotification('备份文件夹已选择', false);
+    }
+  } catch (error) {
+    console.error('选择备份文件夹失败:', error);
+    showNotification('选择文件夹失败: ' + error.message, true);
+  }
+}
+
+/**
+ * 保存备份设置
+ */
+async function saveBackupSettings() {
+  try {
+    backupManager.autoBackupEnabled = autoBackupEnabled ? autoBackupEnabled.checked : false;
+    backupManager.backupFrequency = backupFrequency ? backupFrequency.value : 'every-save';
+    backupManager.cloudBackupEnabled = cloudBackupEnabled ? cloudBackupEnabled.checked : false;
+    
+    await backupManager.saveSettings();
+    
+    // 保存到 chrome.storage
+    await chrome.storage.local.set({
+      autoBackupEnabled: backupManager.autoBackupEnabled,
+      backupFrequency: backupManager.backupFrequency,
+      cloudBackupEnabled: backupManager.cloudBackupEnabled
+    });
+    
+    showNotification('备份设置已保存', false);
+    closeBackupSettingsModal();
+  } catch (error) {
+    console.error('保存备份设置失败:', error);
+    showNotification('保存设置失败: ' + error.message, true);
+  }
+}
+
+/**
+ * 创建备份
+ */
+async function handleCreateBackup() {
+  if (!createBackupBtn) return;
+  
+  const originalText = createBackupBtn.textContent;
+  createBackupBtn.disabled = true;
+  createBackupBtn.textContent = '创建中...';
+  
+  if (backupStatus) {
+    backupStatus.style.display = 'none';
+  }
+  
+  try {
+    const notes = await storage.getAllNotes();
+    if (notes.length === 0) {
+      showNotification('没有可备份的笔记', true);
+      return;
+    }
+    
+    const result = await backupManager.createBackup(notes, false);
+    
+    // 如果启用了云端备份
+    if (backupManager.cloudBackupEnabled) {
+      await backupManager.backupToCloud(notes);
+    }
+    
+    if (backupStatus) {
+      backupStatus.textContent = result;
+      backupStatus.className = 'service-status status-connected';
+      backupStatus.style.display = 'block';
+    }
+    
+    showNotification('备份创建成功', false);
+  } catch (error) {
+    console.error('创建备份失败:', error);
+    if (backupStatus) {
+      backupStatus.textContent = '备份失败: ' + error.message;
+      backupStatus.className = 'service-status status-disconnected';
+      backupStatus.style.display = 'block';
+    }
+    showNotification('创建备份失败: ' + error.message, true);
+  } finally {
+    createBackupBtn.disabled = false;
+    createBackupBtn.textContent = originalText;
+  }
+}
+
+/**
+ * 打开恢复数据弹窗
+ */
+function openRestoreModal() {
+  if (!restoreModal) return;
+  
+  selectedRestoreFile = null;
+  if (restoreDropZone) {
+    restoreDropZone.classList.remove('drag-over');
+  }
+  if (confirmRestoreBtn) {
+    confirmRestoreBtn.disabled = true;
+  }
+  if (restoreStatus) {
+    restoreStatus.style.display = 'none';
+  }
+  
+  restoreModal.classList.add('show');
+}
+
+/**
+ * 关闭恢复数据弹窗
+ */
+function closeRestoreModal() {
+  if (restoreModal) {
+    restoreModal.classList.remove('show');
+  }
+  selectedRestoreFile = null;
+  if (restoreFileInput) {
+    restoreFileInput.value = '';
+  }
+  // 重置拖拽区域显示
+  if (restoreDropZone) {
+    restoreDropZone.innerHTML = `
+      <p>📁 拖拽备份文件到这里</p>
+      <p class="hint">或点击下方按钮选择文件</p>
+    `;
+  }
+  if (confirmRestoreBtn) {
+    confirmRestoreBtn.disabled = true;
+  }
+}
+
+/**
+ * 设置拖拽导入功能
+ */
+function setupDragAndDrop() {
+  if (!restoreDropZone) return;
+  
+  restoreDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    restoreDropZone.classList.add('drag-over');
+  });
+  
+  restoreDropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    restoreDropZone.classList.remove('drag-over');
+  });
+  
+  restoreDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    restoreDropZone.classList.remove('drag-over');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleRestoreFile(files[0]);
+    }
+  });
+  
+  restoreDropZone.addEventListener('click', () => {
+    if (restoreFileInput) {
+      restoreFileInput.click();
+    }
+  });
+}
+
+/**
+ * 处理恢复文件选择
+ */
+function handleRestoreFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) {
+    handleRestoreFile(file);
+  }
+}
+
+/**
+ * 处理恢复文件
+ */
+function handleRestoreFile(file) {
+  if (!file.name.endsWith('.json')) {
+    showNotification('请选择 JSON 格式的备份文件', true);
+    return;
+  }
+  
+  selectedRestoreFile = file;
+  
+  if (restoreDropZone) {
+    restoreDropZone.innerHTML = `<p>✓ ${file.name}</p>`;
+  }
+  
+  if (confirmRestoreBtn) {
+    confirmRestoreBtn.disabled = false;
+  }
+}
+
+/**
+ * 确认恢复数据
+ */
+async function handleRestoreConfirm() {
+  if (!selectedRestoreFile) {
+    showNotification('请先选择备份文件', true);
+    return;
+  }
+  
+  if (!confirmRestoreBtn) return;
+  
+  const originalText = confirmRestoreBtn.textContent;
+  confirmRestoreBtn.disabled = true;
+  confirmRestoreBtn.textContent = '恢复中...';
+  
+  if (restoreStatus) {
+    restoreStatus.style.display = 'none';
+  }
+  
+  try {
+    const text = await selectedRestoreFile.text();
+    const importData = JSON.parse(text);
+    
+    if (!importData.notes || !Array.isArray(importData.notes)) {
+      throw new Error('无效的备份文件格式');
+    }
+    
+    const mergeMode = restoreMergeMode ? restoreMergeMode.checked : true;
+    let existingNotes = [];
+    
+    if (mergeMode) {
+      existingNotes = await storage.getAllNotes();
     } else {
-      alert(`✗ 导出到 ${service} 失败: ${error.message}`);
+      await chrome.storage.local.clear();
+      existingNotes = [];
     }
+    
+    let importedCount = 0;
+    let skippedCount = 0;
+    
+    for (const note of importData.notes) {
+      const exists = existingNotes.some(existing => 
+        existing.id === note.id || 
+        (existing.title === note.title && existing.url === note.url)
+      );
+      
+      if (!exists) {
+        if (!note.id) {
+          note.id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        }
+        if (!note.createdAt) {
+          note.createdAt = new Date().toISOString();
+        }
+        if (!note.updatedAt) {
+          note.updatedAt = new Date().toISOString();
+        }
+        
+        await storage.saveNote(note);
+        importedCount++;
+      } else {
+        skippedCount++;
+      }
+    }
+    
+    if (restoreStatus) {
+      restoreStatus.textContent = `成功恢复 ${importedCount} 条笔记，跳过 ${skippedCount} 条重复`;
+      restoreStatus.className = 'service-status status-connected';
+      restoreStatus.style.display = 'block';
+    }
+    
+    showNotification(`恢复完成！成功导入 ${importedCount} 条笔记`, false);
+    
+    // 刷新视图
+    await loadNotes();
+    if (libraryView && !libraryView.classList.contains('hidden')) {
+      loadLibraryView();
+    }
+    
+    // 关闭弹窗
+    setTimeout(() => {
+      closeRestoreModal();
+      closeFirstLaunchModal();
+      if (emptyStateRestore) {
+        emptyStateRestore.style.display = 'none';
+      }
+    }, 1500);
+  } catch (error) {
+    console.error('恢复数据失败:', error);
+    if (restoreStatus) {
+      restoreStatus.textContent = '恢复失败: ' + error.message;
+      restoreStatus.className = 'service-status status-disconnected';
+      restoreStatus.style.display = 'block';
+    }
+    showNotification('恢复失败: ' + error.message, true);
+  } finally {
+    confirmRestoreBtn.disabled = false;
+    confirmRestoreBtn.textContent = originalText;
+  }
+}
+
+/**
+ * 触发自动备份（在保存笔记后调用）
+ */
+async function triggerAutoBackup() {
+  try {
+    if (!backupManager.shouldBackup()) {
+      return;
+    }
+    
+    const notes = await storage.getAllNotes();
+    if (notes.length === 0) {
+      return;
+    }
+    
+    // 异步执行备份，不阻塞主流程
+    backupManager.createBackup(notes, false).catch(error => {
+      console.error('自动备份失败:', error);
+    });
+    
+    // 云端备份
+    if (backupManager.cloudBackupEnabled) {
+      backupManager.backupToCloud(notes).catch(error => {
+        console.error('云端自动备份失败:', error);
+      });
+    }
+  } catch (error) {
+    console.error('触发自动备份失败:', error);
   }
 }

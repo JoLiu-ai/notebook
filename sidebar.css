@@ -122,12 +122,86 @@
   color: #667eea;
 }
 
-/* 文档库视图时，头部的导入/导出按钮正常显示 */
-/* 清空数据按钮只在文档库视图显示 */
-#clearAllBtn {
-  display: none;
+/* 更多操作下拉菜单 */
+.more-actions-wrapper {
+  position: relative;
 }
 
+.more-actions-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+  padding: 4px;
+  display: none;
+  z-index: 1000;
+  overflow: hidden;
+  animation: fadeInDown 0.2s ease-out;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.more-actions-menu.show {
+  display: block;
+}
+
+.menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: #333;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.menu-item:hover {
+  background: #f5f5f5;
+}
+
+.menu-item:active {
+  background: #e8e8e8;
+}
+
+.menu-item-danger {
+  color: #ff4444;
+}
+
+.menu-item-danger:hover {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.menu-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.menu-text {
+  flex: 1;
+}
+
+/* 文档库视图时，清空数据按钮在菜单中显示 */
 .sidebar-container.library-active #clearAllBtn {
   display: flex;
 }
@@ -136,6 +210,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
+  position: relative;
 }
 
 .btn-icon {
@@ -316,6 +391,47 @@
   color: #4a5bdc;
 }
 
+/* 分类标签颜色（与分类按钮颜色对应） */
+.note-category-badge[data-color-index="0"] {
+  background: rgba(102, 126, 234, 0.15);
+  color: #667eea;
+}
+
+.note-category-badge[data-color-index="1"] {
+  background: rgba(118, 75, 162, 0.15);
+  color: #764ba2;
+}
+
+.note-category-badge[data-color-index="2"] {
+  background: rgba(240, 147, 251, 0.15);
+  color: #f093fb;
+}
+
+.note-category-badge[data-color-index="3"] {
+  background: rgba(79, 172, 254, 0.15);
+  color: #4facfe;
+}
+
+.note-category-badge[data-color-index="4"] {
+  background: rgba(67, 233, 123, 0.15);
+  color: #43e97b;
+}
+
+.note-category-badge[data-color-index="5"] {
+  background: rgba(250, 112, 154, 0.15);
+  color: #fa709a;
+}
+
+.note-category-badge[data-color-index="6"] {
+  background: rgba(254, 225, 64, 0.15);
+  color: #fee140;
+}
+
+.note-category-badge[data-color-index="7"] {
+  background: rgba(48, 207, 208, 0.15);
+  color: #30cfd0;
+}
+
 .note-tag-badge {
   display: inline-flex;
   align-items: center;
@@ -377,6 +493,15 @@
   margin-top: 8px;
 }
 
+.empty-state-restore {
+  margin-top: 16px;
+}
+
+.empty-state-restore .btn-primary {
+  padding: 10px 20px;
+  font-size: 14px;
+}
+
 /* 文档库视图 */
 .library-stats {
   display: flex;
@@ -406,6 +531,120 @@
 .stat-label {
   font-size: 12px;
   color: #666;
+}
+
+.library-categories {
+  padding: 12px;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+  white-space: nowrap;
+}
+
+.category-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.category-btn.active {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.category-btn.all {
+  background: #667eea;
+}
+
+.category-btn.all:hover {
+  background: #5568d3;
+}
+
+/* 为不同分类设置不同颜色 */
+.category-btn[data-category-index="0"] {
+  background: #667eea;
+}
+
+.category-btn[data-category-index="0"]:hover {
+  background: #5568d3;
+}
+
+.category-btn[data-category-index="1"] {
+  background: #764ba2;
+}
+
+.category-btn[data-category-index="1"]:hover {
+  background: #653a8a;
+}
+
+.category-btn[data-category-index="2"] {
+  background: #f093fb;
+}
+
+.category-btn[data-category-index="2"]:hover {
+  background: #e07ae8;
+}
+
+.category-btn[data-category-index="3"] {
+  background: #4facfe;
+}
+
+.category-btn[data-category-index="3"]:hover {
+  background: #2d8fe8;
+}
+
+.category-btn[data-category-index="4"] {
+  background: #43e97b;
+}
+
+.category-btn[data-category-index="4"]:hover {
+  background: #2dd165;
+}
+
+.category-btn[data-category-index="5"] {
+  background: #fa709a;
+}
+
+.category-btn[data-category-index="5"]:hover {
+  background: #f85a8a;
+}
+
+.category-btn[data-category-index="6"] {
+  background: #fee140;
+}
+
+.category-btn[data-category-index="6"]:hover {
+  background: #fdd428;
+}
+
+.category-btn[data-category-index="7"] {
+  background: #30cfd0;
+}
+
+.category-btn[data-category-index="7"]:hover {
+  background: #1fb5b6;
+}
+
+/* 如果分类超过8个，使用循环颜色 */
+.category-btn[data-category-index]:not([data-category-index="0"]):not([data-category-index="1"]):not([data-category-index="2"]):not([data-category-index="3"]):not([data-category-index="4"]):not([data-category-index="5"]):not([data-category-index="6"]):not([data-category-index="7"]) {
+  background: #667eea;
+}
+
+.category-btn[data-category-index]:not([data-category-index="0"]):not([data-category-index="1"]):not([data-category-index="2"]):not([data-category-index="3"]):not([data-category-index="4"]):not([data-category-index="5"]):not([data-category-index="6"]):not([data-category-index="7"]):hover {
+  background: #5568d3;
 }
 
 .library-actions {
@@ -709,19 +948,82 @@
   padding: 8px 10px;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
-  background: #f7f7f7;
+  background: #ffffff;
   width: 100%;
   box-sizing: border-box;
 }
 
 .checkbox-label:hover {
-  background: #eeeeee;
+  background: #f7f8ff;
+  border-color: rgba(102, 126, 234, 0.35);
 }
 
-.checkbox-label input {
+/* 自定义 checkbox（更现代） */
+.checkbox-label input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
   margin: 0;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid #cfd5e6;
+  background: #fff;
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.checkbox-label input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform 0.12s ease-in-out;
+  clip-path: polygon(14% 44%, 0 65%, 41% 100%, 100% 22%, 80% 0, 38% 62%);
+  background: #ffffff;
+}
+
+.checkbox-label input[type="checkbox"]:checked {
+  background: #667eea;
+  border-color: #667eea;
+  box-shadow: 0 6px 14px rgba(102, 126, 234, 0.25);
+}
+
+.checkbox-label input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+.checkbox-label input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.18);
+  border-color: #667eea;
+}
+
+.checkbox-label input[type="checkbox"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.checkbox-label:has(input[type="checkbox"]:disabled) {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* 弹窗整体更精致一些 */
+.modal.show .modal-content {
+  animation: modalPop 0.18s ease-out;
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* 文本内容标题栏 */
@@ -1088,4 +1390,50 @@
 #cloudSettingsModal .form-group:not(:last-child) {
   border-bottom: 1px solid #e0e0e0;
   padding-bottom: 16px;
+}
+
+/* 备份设置相关样式 */
+.restore-drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  background: #f9f9f9;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.restore-drop-zone:hover {
+  border-color: #667eea;
+  background: #f0f0ff;
+}
+
+.restore-drop-zone.drag-over {
+  border-color: #667eea;
+  background: #e8e8ff;
+  transform: scale(1.02);
+}
+
+.restore-drop-zone p {
+  margin: 8px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.restore-drop-zone p:first-child {
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+.restore-drop-zone .hint {
+  font-size: 12px;
+  color: #999;
+}
+
+.backup-setting-group {
+  display: none;
+}
+
+.backup-setting-group.show {
+  display: block;
 }
