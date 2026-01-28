@@ -13,6 +13,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(result => sendResponse({ success: true, ...result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // 保持消息通道开放
+  } else if (request.action === 'captureImage') {
+    captureImageByUrl(request.srcUrl)
+      .then(imageData => sendResponse({ success: true, imageData }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true; // 保持消息通道开放
   }
 });
 
@@ -299,3 +304,77 @@ function imageToBase64(img) {
   });
 }
 
+// 根据图片 URL 获取 base64（优先匹配 DOM 图片）
+async function captureImageByUrl(srcUrl) {
+  if (!srcUrl) {
+    throw new Error('图片地址为空');
+  }
+
+  const imgElement = Array.from(document.images).find(img => {
+    return img.currentSrc === srcUrl || img.src === srcUrl;
+  });
+
+  if (imgElement) {
+    return await imageToBase64(imgElement);
+  }
+
+  return await imageUrlToBase64(srcUrl);
+}
+
+function imageUrlToBase64(imageUrl) {
+  return new Promise((resolve, reject) => {
+    if (!imageUrl) {
+      reject(new Error('图片地址为空'));
+      return;
+    }
+
+    if (imageUrl.startsWith('data:') || imageUrl.startsWith('blob:')) {
+      resolve(imageUrl);
+      return;
+    }
+
+    fetch(imageUrl)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('图片获取失败');
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve(reader.result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const newImg = new Image();
+
+        newImg.crossOrigin = 'anonymous';
+        newImg.onload = () => {
+          const maxSize = 800;
+          let width = newImg.width;
+          let height = newImg.height;
+
+          if (width > maxSize || height > maxSize) {
+            const ratio = Math.min(maxSize / width, maxSize / height);
+            width = Math.floor(width * ratio);
+            height = Math.floor(height * ratio);
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(newImg, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        newImg.onerror = () => {
+          console.warn('无法提取图片，返回原始 URL:', imageUrl);
+          resolve(imageUrl);
+        };
+        newImg.src = imageUrl;
+      });
+  });
+}

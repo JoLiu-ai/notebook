@@ -9,24 +9,53 @@
 <body>
   <div class="container">
     <header class="header">
-      <h1>📝 知识笔记</h1>
+      <div class="header-left">
+        <h1>📝 知识笔记</h1>
+        <div class="view-tabs">
+          <button class="tab-btn active" id="notesTab" data-view="notes">笔记</button>
+          <button class="tab-btn" id="libraryTab" data-view="library">文档库</button>
+        </div>
+      </div>
       <div class="header-actions">
         <button id="exportBtn" class="btn-icon" title="导出数据">📥</button>
         <button id="addNoteBtn" class="btn-icon" title="添加笔记">+</button>
       </div>
     </header>
 
-    <div class="search-box">
-      <input type="text" id="searchInput" placeholder="搜索笔记...">
+    <div class="view-content" id="notesView">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索笔记...">
+      </div>
+
+      <div class="notes-container" id="notesContainer">
+        <!-- 笔记列表将在这里动态生成 -->
+      </div>
+
+      <div class="empty-state" id="emptyState">
+        <p>还没有笔记</p>
+        <p class="hint">点击"添加笔记"或使用快捷键保存当前页面内容</p>
+      </div>
     </div>
 
-    <div class="notes-container" id="notesContainer">
-      <!-- 笔记列表将在这里动态生成 -->
-    </div>
+    <div class="view-content hidden" id="libraryView">
+      <div class="library-stats">
+        <div class="stat-item">
+          <div class="stat-value" id="totalNotes">0</div>
+          <div class="stat-label">总笔记数</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="totalImages">0</div>
+          <div class="stat-label">总图片数</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="storageSize">0 KB</div>
+          <div class="stat-label">存储大小</div>
+        </div>
+      </div>
 
-    <div class="empty-state" id="emptyState">
-      <p>还没有笔记</p>
-      <p class="hint">点击"添加笔记"或使用快捷键保存当前页面内容</p>
+      <div class="library-list" id="libraryList">
+        <!-- 文档库列表将在这里显示 -->
+      </div>
     </div>
   </div>
 

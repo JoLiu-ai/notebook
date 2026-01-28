@@ -1,15 +1,31 @@
 // Background Service Worker
+importScripts('image-storage.js', 'storage.js');
+
+const noteStorage = new NoteStorage();
+const CONTEXT_MENU_ID = 'saveToNote';
+const CONTEXT_MENU_TITLE = '保存到知识笔记';
+const CONTEXT_MENU_CONTEXTS = ['page', 'selection', 'image', 'link'];
+
+function ensureContextMenus() {
+  if (!chrome.contextMenus) return;
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_ID,
+      title: CONTEXT_MENU_TITLE,
+      contexts: CONTEXT_MENU_CONTEXTS
+    });
+  });
+}
 
 // 安装时的初始化
 chrome.runtime.onInstalled.addListener(() => {
   console.log('知识笔记插件已安装');
-  
-  // 创建右键菜单
-  chrome.contextMenus.create({
-    id: "saveToNote",
-    title: "保存到知识笔记",
-    contexts: ["selection", "image", "link"]
-  });
+  ensureContextMenus();
+});
+
+// 浏览器启动时确保右键菜单存在
+chrome.runtime.onStartup.addListener(() => {
+  ensureContextMenus();
 });
 
 // 点击插件图标时切换侧边栏
@@ -54,16 +70,14 @@ chrome.commands?.onCommand.addListener((command) => {
 
 // 监听右键菜单点击事件
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === "saveToNote") {
+  if (info.menuItemId === CONTEXT_MENU_ID) {
     try {
+      const pageUrl = info.pageUrl || tab?.url || '';
       const note = {
-        id: Date.now().toString(),
         title: '',
-        url: tab.url,
+        url: pageUrl,
         text: '',
-        images: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        images: []
       };
 
       // 处理选中的文本
@@ -76,7 +90,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       if (info.mediaType === 'image' && info.srcUrl) {
         try {
           // 将图片 URL 转换为 base64
-          const imageBase64 = await imageUrlToBase64(info.srcUrl);
+          const imageBase64 = await imageUrlToBase64(info.srcUrl, tab?.id);
           note.images = [imageBase64];
           if (!note.title) {
             note.title = '保存的图片';
@@ -99,13 +113,28 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         }
       }
 
+      const shouldCapturePage = !info.selectionText && !info.linkUrl && !(info.mediaType === 'image');
+      if (shouldCapturePage && tab?.id) {
+        try {
+          const pageContent = await capturePageFromTab(tab.id);
+          if (pageContent?.text) {
+            note.text = note.text ? note.text + '\n\n' + pageContent.text : pageContent.text;
+          }
+          if (pageContent?.images?.length) {
+            note.images = note.images.concat(pageContent.images);
+          }
+        } catch (error) {
+          console.warn('捕获页面内容失败:', error);
+        }
+      }
+
       // 如果没有标题，使用页面标题
       if (!note.title) {
-        note.title = tab.title || '无标题';
+        note.title = tab?.title || pageUrl || '无标题';
       }
 
       // 保存笔记
-      await saveNoteToStorage(note);
+      await noteStorage.saveNote(note);
       
       // 显示通知
       chrome.notifications?.create({
@@ -120,8 +149,37 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+async function capturePageFromTab(tabId) {
+  const response = await sendMessageToTab(tabId, { action: 'capturePage' });
+  if (!response?.success) {
+    throw new Error(response?.error || 'capturePage failed');
+  }
+  return response;
+}
+
+async function captureImageFromTab(tabId, srcUrl) {
+  const response = await sendMessageToTab(tabId, { action: 'captureImage', srcUrl });
+  if (!response?.success) {
+    throw new Error(response?.error || 'captureImage failed');
+  }
+  return response.imageData;
+}
+
+async function sendMessageToTab(tabId, message) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    if (!tabId) throw error;
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content.js']
+    });
+    return await chrome.tabs.sendMessage(tabId, message);
+  }
+}
+
 // 将图片 URL 转换为 base64
-async function imageUrlToBase64(imageUrl) {
+async function imageUrlToBase64(imageUrl, tabId) {
   try {
     // 使用 fetch 获取图片
     const response = await fetch(imageUrl);
@@ -136,32 +194,13 @@ async function imageUrlToBase64(imageUrl) {
       reader.readAsDataURL(blob);
     });
   } catch (error) {
-    // 如果跨域或其他错误，尝试使用 content script 获取
+    if (tabId) {
+      try {
+        return await captureImageFromTab(tabId, imageUrl);
+      } catch (captureError) {
+        throw captureError;
+      }
+    }
     throw error;
   }
-}
-
-// 保存笔记到存储
-async function saveNoteToStorage(note) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get(['fact_notebook_notes'], (result) => {
-      const notes = result.fact_notebook_notes || [];
-      
-      // 检查是否已存在（更新场景）
-      const existingIndex = notes.findIndex(n => n.id === note.id);
-      if (existingIndex >= 0) {
-        notes[existingIndex] = note;
-      } else {
-        notes.push(note);
-      }
-
-      chrome.storage.local.set({ fact_notebook_notes: notes }, () => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(note);
-        }
-      });
-    });
-  });
 }
