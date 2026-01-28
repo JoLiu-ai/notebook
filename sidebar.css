@@ -377,6 +377,15 @@
   margin-top: 8px;
 }
 
+.empty-state-restore {
+  margin-top: 16px;
+}
+
+.empty-state-restore .btn-primary {
+  padding: 10px 20px;
+  font-size: 14px;
+}
+
 /* 文档库视图 */
 .library-stats {
   display: flex;
@@ -1088,4 +1097,50 @@
 #cloudSettingsModal .form-group:not(:last-child) {
   border-bottom: 1px solid #e0e0e0;
   padding-bottom: 16px;
+}
+
+/* 备份设置相关样式 */
+.restore-drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  background: #f9f9f9;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.restore-drop-zone:hover {
+  border-color: #667eea;
+  background: #f0f0ff;
+}
+
+.restore-drop-zone.drag-over {
+  border-color: #667eea;
+  background: #e8e8ff;
+  transform: scale(1.02);
+}
+
+.restore-drop-zone p {
+  margin: 8px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.restore-drop-zone p:first-child {
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+.restore-drop-zone .hint {
+  font-size: 12px;
+  color: #999;
+}
+
+.backup-setting-group {
+  display: none;
+}
+
+.backup-setting-group.show {
+  display: block;
 }

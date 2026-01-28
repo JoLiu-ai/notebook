@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>选择备份文件夹</title>
+  <style>
+    body {
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      background: #f7f7fb;
+      color: #333;
+      margin: 0;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 8px 0;
+    }
+    p {
+      font-size: 13px;
+      color: #666;
+      margin: 0 0 16px 0;
+      line-height: 1.5;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+    }
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .primary {
+      background: #667eea;
+      color: #fff;
+    }
+    .secondary {
+      background: #eef1ff;
+      color: #3b4cca;
+    }
+    .status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>选择备份文件夹</h1>
+    <p>浏览器限制侧边栏内无法弹出文件夹选择器，请在此窗口完成选择。</p>
+    <div class="actions">
+      <button class="primary" id="pickFolderBtn">选择文件夹</button>
+      <button class="secondary" id="closeBtn">关闭</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <script src="backup-handle-storage.js"></script>
+  <script src="storage.js"></script>
+  <script src="backup-picker.js"></script>
+</body>
+</html>

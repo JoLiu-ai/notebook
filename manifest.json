@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "知识笔记",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "用于阅读网页/帖子时保存网址、文本和图片的知识笔记工具",
   "permissions": [
     "storage",
@@ -38,7 +38,18 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sidebar.html", "sidebar.css", "sidebar.js", "storage.js", "image-storage.js", "error-handler.js", "common.js", "mcp-notion.js", "cloud-services.js"],
+      "resources": [
+        "sidebar.html",
+        "sidebar.css",
+        "sidebar.js",
+        "storage.js",
+        "image-storage.js",
+        "backup-handle-storage.js",
+        "error-handler.js",
+        "common.js",
+        "mcp-notion.js",
+        "cloud-services.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]

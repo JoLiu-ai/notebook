@@ -25,7 +25,9 @@
         <div class="header-actions">
           <button id="positionBtn" class="btn-icon" title="切换位置">⇄</button>
           <button id="importBtn" class="btn-icon" title="导入数据">📤</button>
+          <button id="restoreBtn" class="btn-icon" title="恢复数据">🔄</button>
           <button id="exportBtn" class="btn-icon" title="导出数据">📥</button>
+          <button id="backupSettingsBtn" class="btn-icon" title="备份设置">💾</button>
           <button id="clearAllBtn" class="btn-icon btn-icon-danger" title="清空所有数据">🗑️</button>
           <button id="addNoteBtn" class="btn-icon" title="添加笔记">+</button>
           <button id="closeBtn" class="btn-icon" title="关闭">×</button>
@@ -45,6 +47,9 @@
         <div class="empty-state" id="emptyState">
           <p>还没有笔记</p>
           <p class="hint">点击"添加"按钮保存当前页面内容</p>
+          <div id="emptyStateRestore" class="empty-state-restore" style="display: none; margin-top: 16px;">
+            <button class="btn-primary" id="emptyStateRestoreBtn">从备份恢复数据</button>
+          </div>
         </div>
       </div>
 
@@ -194,6 +199,123 @@
     </div>
   </div>
 
+  <!-- 备份设置弹窗 -->
+  <div class="modal" id="backupSettingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>备份设置</h2>
+        <button class="close-btn" id="closeBackupSettingsBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <h3>自动备份</h3>
+          <label class="checkbox-label" for="autoBackupEnabled">
+            <input type="checkbox" id="autoBackupEnabled">
+            启用自动备份
+          </label>
+          <div class="form-hint">每次保存笔记后自动创建备份文件</div>
+        </div>
+        
+        <div class="form-group backup-setting-group" id="backupLocationGroup">
+          <label for="backupLocation">备份位置</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" id="backupLocation" placeholder="选择备份文件夹..." readonly style="flex: 1;">
+            <button type="button" class="btn-secondary" id="selectBackupFolderBtn">选择文件夹</button>
+          </div>
+          <div class="form-hint">选择本地文件夹用于保存备份文件</div>
+        </div>
+
+        <div class="form-group backup-setting-group" id="backupFrequencyGroup">
+          <label for="backupFrequency">备份频率</label>
+          <select id="backupFrequency">
+            <option value="every-save">每次保存</option>
+            <option value="daily">每天一次</option>
+            <option value="weekly">每周一次</option>
+            <option value="manual">仅手动备份</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <h3>云端备份（可选）</h3>
+          <label class="checkbox-label" for="cloudBackupEnabled">
+            <input type="checkbox" id="cloudBackupEnabled">
+            自动备份到 Google Drive
+          </label>
+          <div class="form-hint">需要先配置 Google Drive（在云服务设置中）</div>
+        </div>
+
+        <div class="form-group">
+          <h3>手动备份</h3>
+          <button type="button" class="btn-primary" id="createBackupBtn">立即创建备份</button>
+          <div class="form-hint">手动创建当前所有数据的备份文件</div>
+        </div>
+
+        <div class="form-group">
+          <div id="backupStatus" class="service-status" style="display: none;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="closeBackupSettingsBtn2">关闭</button>
+        <button class="btn-primary" id="saveBackupSettingsBtn">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 恢复数据弹窗 -->
+  <div class="modal" id="restoreModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>恢复数据</h2>
+        <button class="close-btn" id="closeRestoreModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <p>选择备份文件来恢复数据：</p>
+          <div class="restore-drop-zone" id="restoreDropZone">
+            <p>📁 拖拽备份文件到这里</p>
+            <p class="hint">或点击下方按钮选择文件</p>
+          </div>
+          <input type="file" id="restoreFileInput" accept=".json" style="display: none;">
+          <button type="button" class="btn-secondary" id="selectRestoreFileBtn" style="margin-top: 12px;">选择备份文件</button>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label" for="restoreMergeMode">
+            <input type="checkbox" id="restoreMergeMode" checked>
+            合并模式（保留现有笔记）
+          </label>
+          <div class="form-hint">取消勾选将替换所有现有数据</div>
+        </div>
+        <div class="form-group">
+          <div id="restoreStatus" class="service-status" style="display: none;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelRestoreBtn">取消</button>
+        <button class="btn-primary" id="confirmRestoreBtn" disabled>恢复数据</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 首次启动提示弹窗 -->
+  <div class="modal" id="firstLaunchModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>欢迎使用知识笔记</h2>
+      </div>
+      <div class="modal-body">
+        <p>这是您首次使用本扩展，或者检测到没有已保存的笔记。</p>
+        <p>如果您之前使用过本扩展并创建了备份，可以立即恢复数据：</p>
+        <div style="margin-top: 16px;">
+          <button class="btn-primary" id="firstLaunchRestoreBtn">从备份恢复</button>
+          <button class="btn-secondary" id="firstLaunchSkipBtn" style="margin-left: 8px;">跳过，开始使用</button>
+        </div>
+        <div class="form-hint" style="margin-top: 16px;">
+          <strong>提示：</strong>建议定期备份数据，避免卸载扩展后数据丢失。可以在"备份设置"中配置自动备份。
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 云服务设置弹窗 -->
   <div class="modal" id="cloudSettingsModal">
     <div class="modal-content">
@@ -256,6 +378,7 @@
     </div>
   </div>
 
+  <script src="backup-handle-storage.js"></script>
   <script src="storage.js"></script>
   <script src="image-storage.js"></script>
   <script src="error-handler.js"></script>

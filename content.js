@@ -1,4 +1,9 @@
 // Content Script - 用于从网页提取内容和注入侧边栏
+(function () {
+  if (window.__factNotebookContentScriptLoaded) {
+    return;
+  }
+  window.__factNotebookContentScriptLoaded = true;
 
 let sidebarIframe = null;
 let isSidebarVisible = false;
@@ -378,3 +383,4 @@ function imageUrlToBase64(imageUrl) {
       });
   });
 }
+})();
