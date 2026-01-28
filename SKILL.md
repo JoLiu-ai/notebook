@@ -97,6 +97,20 @@ if (imageStorage) {
 }
 ```
 
+### 侧边栏内选择备份文件夹失败
+
+**问题描述：** 点击“选择文件夹”提示 `SecurityError: Cross origin sub frames aren't allowed to show a file picker`
+
+**原因：** 侧边栏运行在网页的 iframe 内，浏览器限制在子 frame 中打开文件夹选择器。
+
+**解决方案：**
+
+1. **打开独立窗口选择**
+   - 点击“选择文件夹”后会打开独立窗口完成选择
+   - 选择完成后会自动同步到侧边栏
+2. **手动备份兜底**
+   - 如果无法选择文件夹，可使用“立即创建备份”下载备份文件
+
 ### 云服务认证问题
 
 **问题描述：** Google Drive、Notion 等云服务认证失败
