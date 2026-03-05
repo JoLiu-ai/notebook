@@ -16,6 +16,7 @@ const cancelBtn = document.getElementById('cancelBtn');
 const saveNoteBtn = document.getElementById('saveNoteBtn');
 const deleteNoteBtn = document.getElementById('deleteNoteBtn');
 const editNoteBtn = document.getElementById('editNoteBtn');
+const copyNoteBtn = document.getElementById('copyNoteBtn');
 const closeViewBtn = document.getElementById('closeViewBtn');
 const downloadModal = document.getElementById('downloadModal');
 const downloadModalTitle = document.getElementById('downloadModalTitle');
@@ -105,6 +106,28 @@ function setupEventListeners() {
       const noteId = currentViewingNoteId;
       closeViewNoteModal();
       editNote(noteId);
+    });
+  }
+  if (copyNoteBtn) {
+    copyNoteBtn.addEventListener('click', async () => {
+      if (!currentViewingNoteId) return;
+      const note = await storage.getNote(currentViewingNoteId);
+      if (note && note.text) {
+        const success = await copyTextWithLinks(note.text, 'markdown');
+        if (success) {
+          if (typeof errorHandler !== 'undefined') {
+            errorHandler.showSuccess('已复制到剪贴板');
+          } else {
+            alert('已复制到剪贴板');
+          }
+        } else {
+          if (typeof errorHandler !== 'undefined') {
+            errorHandler.showError('复制失败');
+          } else {
+            alert('复制失败');
+          }
+        }
+      }
     });
   }
   if (closeViewBtn) {
@@ -262,6 +285,66 @@ async function loadCurrentPageInfo() {
   } catch (error) {
     console.error('获取当前页面信息失败:', error);
   }
+}
+
+async function requestCurrentPageCapture({
+  silent = false,
+  overwriteText = false,
+  includeImages = false
+} = {}) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) {
+      throw new Error('未找到当前标签页');
+    }
+
+    const response = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('捕获超时'));
+      }, 2000);
+
+      chrome.tabs.sendMessage(tab.id, { action: 'capturePage' }, (result) => {
+        clearTimeout(timer);
+        if (chrome.runtime && chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(result || null);
+      });
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || '无法捕获页面内容');
+    }
+
+    if (response.text && (overwriteText || !noteText.value.trim())) {
+      noteText.value = response.text;
+    }
+
+    if (includeImages && Array.isArray(response.images) && response.images.length > 0) {
+      response.images.forEach((imageData) => {
+        const file = base64ToFile(imageData, 'screenshot.png');
+        selectedImages.push(file);
+        addImagePreview(file);
+      });
+    }
+
+    return true;
+  } catch (error) {
+    if (!silent) {
+      alert('无法捕获页面内容，请确保页面已完全加载');
+    }
+    console.error('捕获页面失败:', error);
+    return false;
+  }
+}
+
+function autoFillCurrentPageContent() {
+  return requestCurrentPageCapture({
+    silent: true,
+    overwriteText: false,
+    includeImages: false
+  });
 }
 
 // 加载笔记列表
@@ -626,7 +709,7 @@ async function openAddNoteModal(note = null) {
     currentViewingNoteId = note.id;
   } else {
     // 新建模式
-    loadCurrentPageInfo();
+    await loadCurrentPageInfo();
     noteText.value = '';
     if (noteCategory) {
       noteCategory.value = '';
@@ -638,6 +721,9 @@ async function openAddNoteModal(note = null) {
     saveNoteBtn.textContent = '保存';
     document.querySelector('.modal-header h2').textContent = '添加笔记';
     currentViewingNoteId = null;
+
+    // 自动填充当前页面正文（仅在文本为空时填充，不覆盖用户输入）
+    autoFillCurrentPageContent();
   }
   
   // 加载分类列表
@@ -947,16 +1033,27 @@ async function viewNote(noteId) {
     viewBody.appendChild(metaDiv);
   }
 
-  // 文本
+  // 文本（支持 Markdown：代码块、标题、加粗/斜体、列表、链接及正文内图片占位符）
   if (note.text) {
     const textDiv = document.createElement('div');
     textDiv.className = 'note-detail-text';
-    textDiv.textContent = note.text;
+    const htmlContent = renderTextWithLinks(note.text, 'html', note.images);
+    textDiv.innerHTML = htmlContent;
+    // 确保链接在新标签页打开
+    const links = textDiv.querySelectorAll('a');
+    links.forEach(link => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    });
     viewBody.appendChild(textDiv);
   }
 
-  // 图片
-  if (note.images && note.images.length > 0) {
+  // 图片（正文无占位符时才显示独立图片区，避免与正文内图片重复）
+  const hasInlineImages = note.text && /\{\{IMAGE_\d+\}\}/.test(note.text);
+  if (note.images && note.images.length > 0 && !hasInlineImages) {
     const imagesDiv = document.createElement('div');
     imagesDiv.className = 'note-detail-images';
     note.images.forEach((imageData, index) => {
@@ -1042,34 +1139,11 @@ function addImagePreview(file) {
 
 // 捕获当前页面
 async function captureCurrentPage() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    // 发送消息给 content script 来捕获页面内容
-    chrome.tabs.sendMessage(tab.id, { action: 'capturePage' }, async (response) => {
-      if (response && response.success) {
-        // 填充文本内容
-        if (response.text) {
-          noteText.value = response.text;
-        }
-        
-        // 添加图片
-        if (response.images && response.images.length > 0) {
-          response.images.forEach(imageData => {
-            // 将 base64 转换为 File 对象
-            const file = base64ToFile(imageData, 'screenshot.png');
-            selectedImages.push(file);
-            addImagePreview(file);
-          });
-        }
-      } else {
-        alert('无法捕获页面内容，请确保页面已完全加载');
-      }
-    });
-  } catch (error) {
-    console.error('捕获页面失败:', error);
-    alert('捕获页面失败');
-  }
+  await requestCurrentPageCapture({
+    silent: false,
+    overwriteText: true,
+    includeImages: true
+  });
 }
 
 // 注意：fileToBase64, base64ToFile, formatDateRelative 等函数已在 common.js 中定义

@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "知识笔记",
   "version": "1.2.2",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAliOFCAEJDVCrKbHqsQLYcb821v7QGyvDZwqynTGyJNEagliU3arUdBrzFtrKqhfqgAGC7w9inH0XRQlRRQFxexJvJvZ+ozUcxBTTRgfKXGvpO/o1FPU7tD4htk3+gcJ/WOjuif1jWgSWLx+XZfEFNXcEMn+3w3SEdBynyjv2+/nUorMPRgP3/dV+iRvzN+vcrI5UilgtfPkWBST2+B8fHVrrLeKm/k+uCmbVDvjH9n7EOfkCNt4clNG2cqwEkIZe3InNVZp6uUvg0d4tDGlhY8ug4mYWoiBP8b7dmy0WXsuxfAldZwQukdVOojuSzUnYjeFNjNASc3HuULZw/clCTQIDAQAB",
   "description": "用于阅读网页/帖子时保存网址、文本和图片的知识笔记工具",
   "permissions": [
     "storage",
@@ -9,7 +10,8 @@
     "tabs",
     "scripting",
     "contextMenus",
-    "identity"
+    "identity",
+    "downloads"
   ],
   "host_permissions": [
     "<all_urls>"

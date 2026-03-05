@@ -166,74 +166,266 @@ chrome.storage.local.get(['sidebarVisible'], (result) => {
   }
 });
 
-// 捕获页面内容
+// 捕获页面内容（保留格式：代码块、标题、加粗/斜体、列表、图片顺序）
 async function capturePageContent() {
-  const result = {
-    text: '',
-    images: []
-  };
-
-  // 提取文本内容
-  result.text = extractTextContent();
-
-  // 提取图片
-  result.images = await extractImages();
-
-  return result;
+  return await extractContentAsMarkdown();
 }
 
-// 提取文本内容
-function extractTextContent() {
-  // 移除脚本和样式标签
-  const scripts = document.querySelectorAll('script, style, noscript');
-  scripts.forEach(el => el.remove());
+// 占位符前缀，用于在 Markdown 中标记图片位置，展示时由 common.js 替换为真实图片
+const IMAGE_PLACEHOLDER_PREFIX = '{{IMAGE_';
 
-  // 获取主要内容区域
-  const mainContent = document.querySelector('main, article, [role="main"], .content, .post-content, .article-content');
-  const contentElement = mainContent || document.body;
-
-  // 提取文本
-  let text = contentElement.innerText || contentElement.textContent || '';
-
-  // 清理文本
-  text = text
-    .replace(/\s+/g, ' ') // 合并多个空格
-    .replace(/\n\s*\n/g, '\n') // 合并多个换行
-    .trim();
-
-  // 限制长度
-  if (text.length > 5000) {
-    text = text.substring(0, 5000) + '...';
+function findLiveImgBySrc(src, usedSet) {
+  if (!src) return null;
+  for (const img of document.images) {
+    if ((img.src === src || img.currentSrc === src) && !usedSet.has(img)) {
+      usedSet.add(img);
+      return img;
+    }
   }
-
-  return text;
+  return null;
 }
 
-// 提取图片
-async function extractImages() {
-  const images = [];
-  const imgElements = document.querySelectorAll('img');
+/**
+ * 按当前站点获取文章正文根节点（优先匹配知识星球等站点结构，与 articles.zsxq.com 格式一致）
+ * @returns {Element}
+ */
+function getArticleRoot() {
+  const host = (document.location.hostname || '').toLowerCase();
 
-  // 限制图片数量
-  const maxImages = 5;
-  const selectedImages = Array.from(imgElements)
-    .filter(img => {
-      // 过滤掉太小的图片（可能是图标）
-      return img.naturalWidth > 100 && img.naturalHeight > 100;
-    })
-    .slice(0, maxImages);
-
-  for (const img of selectedImages) {
-    try {
-      const imageData = await imageToBase64(img);
-      if (imageData) {
-        images.push(imageData);
-      }
-    } catch (error) {
-      console.error('提取图片失败:', error);
+  if (host.includes('zsxq.com') || host.includes('articles.zsxq.com')) {
+    const zsxqSelectors = [
+      '.quill-editor',           // 知识星球文章正文容器 post js_watermark quill-editor
+      '.post.quill-editor',
+      '.rich-content',
+      '.article-content',
+      '.topic-content',
+      '.post-content',
+      '[class*="article-body"]',
+      '[class*="topic-detail"]',
+      '[class*="content-body"]',
+      'main',
+      'article',
+      '[role="main"]'
+    ];
+    for (const sel of zsxqSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.textContent && el.textContent.trim().length > 20) return el;
     }
   }
 
+  const generic = document.querySelector('main, article, [role="main"], .content, .post-content, .article-content, .rich-content');
+  return generic || document.body;
+}
+
+/**
+ * 将 DOM 转为 Markdown，保留代码块、标题、列表、图片顺序等
+ * @returns {Promise<{ text: string, images: string[] }>}
+ */
+async function extractContentAsMarkdown() {
+  const root = getArticleRoot();
+  const clone = root.cloneNode(true);
+  clone.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+
+  const state = {
+    parts: [],
+    images: [],
+    imageIndex: 0,
+    length: 0,
+    maxLength: 15000,
+    maxImages: 15,
+    usedLiveImgs: new Set()
+  };
+
+  async function walk(el, listPrefix = '') {
+    if (state.length >= state.maxLength) return;
+    if (el.nodeType === Node.TEXT_NODE) {
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text) {
+        state.parts.push(text);
+        state.length += text.length;
+      }
+      return;
+    }
+    if (el.nodeType !== Node.ELEMENT_NODE) return;
+
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'img') {
+      if (state.images.length >= state.maxImages) return;
+      const src = el.getAttribute('src');
+      if (!src) return;
+      const alt = (el.getAttribute('alt') || el.getAttribute('title') || '图片').trim().slice(0, 80);
+      const liveImg = findLiveImgBySrc(src, state.usedLiveImgs);
+      if (!liveImg || (liveImg.naturalWidth <= 80 && liveImg.naturalHeight <= 80)) return;
+      try {
+        const data = await imageToBase64(liveImg);
+        if (data) {
+          state.images.push(data);
+          const placeholder = `${IMAGE_PLACEHOLDER_PREFIX}${state.imageIndex}}}`;
+          state.parts.push(`\n![${alt}](${placeholder})\n`);
+          state.imageIndex += 1;
+          state.length += 20;
+        }
+      } catch (e) {
+        console.warn('提取图片失败', e);
+      }
+      return;
+    }
+
+    switch (tag) {
+      case 'h1':
+        state.parts.push('\n# ');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'h2':
+        state.parts.push('\n## ');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'h3':
+        state.parts.push('\n### ');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'h4':
+        state.parts.push('\n#### ');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'h5':
+        state.parts.push('\n##### ');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'h6':
+        state.parts.push('\n###### ');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'pre': {
+        const code = el.querySelector('code');
+        const content = (code || el).textContent || '';
+        if (content.trim()) {
+          state.parts.push('\n```\n' + content.trim() + '\n```\n');
+          state.length += content.length;
+        }
+        break;
+      }
+      case 'code':
+        if (el.closest('pre')) break;
+        state.parts.push('`');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('`');
+        break;
+      case 'p':
+      case 'div':
+      case 'section':
+        state.parts.push('\n');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'br':
+        state.parts.push('\n');
+        break;
+      case 'ul':
+        state.parts.push('\n');
+        for (const li of el.children) {
+          if (li.tagName && li.tagName.toLowerCase() === 'li') {
+            state.parts.push('\n- ');
+            for (const c of li.childNodes) await walk(c);
+          }
+        }
+        state.parts.push('\n');
+        break;
+      case 'ol':
+        state.parts.push('\n');
+        let idx = 0;
+        for (const li of el.children) {
+          if (li.tagName && li.tagName.toLowerCase() === 'li') {
+            idx += 1;
+            state.parts.push('\n' + idx + '. ');
+            for (const c of li.childNodes) await walk(c);
+          }
+        }
+        state.parts.push('\n');
+        break;
+      case 'li':
+        for (const c of el.childNodes) await walk(c);
+        break;
+      case 'blockquote':
+        state.parts.push('\n> ');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('\n');
+        break;
+      case 'strong':
+      case 'b':
+        state.parts.push('**');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('**');
+        break;
+      case 'em':
+      case 'i':
+        state.parts.push('*');
+        for (const c of el.childNodes) await walk(c);
+        state.parts.push('*');
+        break;
+      case 'a': {
+        const href = el.getAttribute('href');
+        const text = (el.textContent || '').trim();
+        if (href && text) {
+          state.parts.push(`[${text}](${href})`);
+        } else if (href) {
+          state.parts.push(href);
+        } else {
+          for (const c of el.childNodes) await walk(c);
+        }
+        state.length += (text || href || '').length + 4;
+        break;
+      }
+      default:
+        for (const c of el.childNodes) await walk(c);
+    }
+  }
+
+  for (const child of clone.childNodes) {
+    await walk(child);
+    if (state.length >= state.maxLength) break;
+  }
+
+  let text = state.parts.join('')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (text.length > state.maxLength) {
+    text = text.substring(0, state.maxLength) + '...';
+  }
+  return { text, images: state.images };
+}
+
+// 兼容：仅要纯文本时使用（如无格式的旧逻辑）
+function extractTextContent() {
+  const el = getArticleRoot();
+  const clone = el.cloneNode(true);
+  clone.querySelectorAll('script, style, noscript').forEach(e => e.remove());
+  let text = (clone.textContent || '').replace(/\s+/g, ' ').replace(/\n\s*\n/g, '\n').trim();
+  if (text.length > 5000) text = text.substring(0, 5000) + '...';
+  return text;
+}
+
+// 提取图片（兼容旧逻辑，不保证与正文顺序一致）
+async function extractImages() {
+  const images = [];
+  const maxImages = 5;
+  const imgs = Array.from(document.querySelectorAll('img'))
+    .filter(img => img.naturalWidth > 100 && img.naturalHeight > 100)
+    .slice(0, maxImages);
+  for (const img of imgs) {
+    try {
+      const data = await imageToBase64(img);
+      if (data) images.push(data);
+    } catch (e) {
+      console.error('提取图片失败:', e);
+    }
+  }
   return images;
 }
 

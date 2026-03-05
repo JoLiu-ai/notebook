@@ -1,5 +1,7 @@
 // 公共工具函数和共享代码
 
+const DEFAULT_DOWNLOAD_SUBFOLDER = 'knowledge-notebook-downloads';
+
 /**
  * HTML 转义函数，防止 XSS 攻击
  * @param {string} text - 需要转义的文本
@@ -390,10 +392,30 @@ function generateDOCXHTML(notes) {
  * @param {string} filename - 文件名
  */
 function downloadFile(blob, filename) {
+  const targetFilename = filename.includes('/')
+    ? filename
+    : `${DEFAULT_DOWNLOAD_SUBFOLDER}/${filename}`;
+
   const url = URL.createObjectURL(blob);
+
+  if (typeof chrome !== 'undefined' && chrome.downloads && chrome.downloads.download) {
+    chrome.downloads.download(
+      {
+        url,
+        filename: targetFilename,
+        saveAs: false,
+        conflictAction: 'uniquify'
+      },
+      () => {
+        URL.revokeObjectURL(url);
+      }
+    );
+    return;
+  }
+
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = targetFilename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -911,4 +933,350 @@ async function downloadNoteAsMarkdown(note, includeImages) {
   const markdown = buildMarkdownContent([note], shouldIncludeImages);
   const filename = buildNoteFilename(note, 0, 'md');
   downloadTextFile(markdown, filename, 'text/markdown;charset=utf-8');
+}
+
+// ==================== 链接处理工具函数 ====================
+
+/**
+ * URL 正则表达式（匹配 http/https/ftp 等协议开头的 URL）
+ */
+const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi;
+
+/**
+ * Markdown 链接正则表达式
+ */
+const MARKDOWN_LINK_REGEX = /\[([^\]]+)\]\(([^)]+)\)/g;
+
+/**
+ * HTML 链接正则表达式
+ */
+const HTML_LINK_REGEX = /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([^<]+)<\/a>/gi;
+
+/**
+ * 从 DOM 元素提取文本并保留链接格式（Markdown 格式）
+ * @param {HTMLElement} element - 要提取的 DOM 元素
+ * @returns {string} 包含链接格式的文本（Markdown 格式）
+ */
+function extractTextWithLinks(element) {
+  if (!element) return '';
+  
+  // 克隆元素以避免修改原始 DOM
+  const clone = element.cloneNode(true);
+  
+  // 移除脚本和样式标签
+  const scripts = clone.querySelectorAll('script, style, noscript');
+  scripts.forEach(el => el.remove());
+  
+  // 处理所有链接元素
+  const links = clone.querySelectorAll('a[href]');
+  links.forEach(link => {
+    const href = link.getAttribute('href');
+    const text = link.textContent.trim();
+    
+    if (href && text) {
+      // 将链接转换为 Markdown 格式
+      const markdownLink = `[${text}](${href})`;
+      const textNode = document.createTextNode(markdownLink);
+      link.parentNode.replaceChild(textNode, link);
+    } else if (href) {
+      // 如果链接没有文本，直接使用 URL
+      const textNode = document.createTextNode(href);
+      link.parentNode.replaceChild(textNode, link);
+    }
+  });
+  
+  // 获取文本内容
+  let text = clone.textContent || clone.innerText || '';
+  
+  // 清理文本
+  text = text
+    .replace(/\s+/g, ' ') // 合并多个空格
+    .replace(/\n\s*\n/g, '\n') // 合并多个换行
+    .trim();
+  
+  return text;
+}
+
+/**
+ * 将 HTML 链接转换为 Markdown 格式
+ * @param {string} html - 包含 HTML 链接的文本
+ * @returns {string} Markdown 格式的文本
+ */
+function convertLinksToMarkdown(html) {
+  if (!html) return '';
+  
+  // 先处理 HTML 链接
+  let text = html.replace(HTML_LINK_REGEX, (match, url, text) => {
+    return `[${text}](${url})`;
+  });
+  
+  // 处理纯 URL（如果还没有被转换为链接）
+  text = text.replace(URL_REGEX, (url) => {
+    // 检查是否已经是 Markdown 链接的一部分
+    if (text.indexOf(`[${url}]`) !== -1 || text.indexOf(`](${url})`) !== -1) {
+      return url;
+    }
+    return `[${url}](${url})`;
+  });
+  
+  return text;
+}
+
+/**
+ * 将文本中的 URL 转换为 HTML 链接
+ * @param {string} text - 包含 URL 的文本
+ * @returns {string} 包含 HTML 链接的文本
+ */
+function convertLinksToHTML(text) {
+  if (!text) return '';
+  
+  // 先处理 Markdown 链接
+  let html = text.replace(MARKDOWN_LINK_REGEX, (match, linkText, url) => {
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(linkText)}</a>`;
+  });
+  
+  // 处理纯 URL（如果还没有被转换为链接）
+  html = html.replace(URL_REGEX, (url) => {
+    // 检查是否已经是链接的一部分
+    if (html.indexOf(`href="${url}"`) !== -1 || html.indexOf(`](${url})`) !== -1) {
+      return url;
+    }
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+  });
+  
+  return html;
+}
+
+/**
+ * 图片占位符正则，与 content.js 中 {{IMAGE_0}}、{{IMAGE_1}} 等一致
+ */
+const IMAGE_PLACEHOLDER_REGEX = /\{\{IMAGE_(\d+)\}\}/g;
+
+/**
+ * 将 Markdown 文本（含图片占位符 {{IMAGE_n}}）渲染为安全 HTML，保留代码块、标题、加粗/斜体、列表、链接
+ * @param {string} text - 笔记正文（可能为纯文本、Markdown 或带 {{IMAGE_n}} 占位符）
+ * @param {Array<string>} [images] - 图片数组（data URL 或 URL），与占位符下标对应
+ * @returns {string} 安全 HTML
+ */
+function renderMarkdownToHtml(text, images) {
+  if (!text) return '';
+  const imgList = Array.isArray(images) ? images : [];
+  let html = text;
+
+  // 1. 替换图片占位符为 <img>（占位符不经过 escapeHtml，由我们安全拼接）
+  html = html.replace(IMAGE_PLACEHOLDER_REGEX, (_, n) => {
+    const i = parseInt(n, 10);
+    const src = imgList[i];
+    if (src && (src.startsWith('data:') || src.startsWith('http') || src.startsWith('blob:'))) {
+      return `<img src="${escapeHtml(src)}" alt="图片 ${i + 1}" class="note-inline-img" loading="lazy" />`;
+    }
+    return '';
+  });
+
+  // 2. 代码块 ```...```（多行，优先处理）
+  html = html.replace(/```([\s\S]*?)```/g, (_, code) => {
+    return '<pre><code>' + escapeHtml(code.trim()) + '</code></pre>';
+  });
+
+  // 3. 按双换行分块
+  const blocks = html.split(/\n\n+/);
+  const result = [];
+  for (let i = 0; i < blocks.length; i++) {
+    let block = blocks[i];
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+
+    // 标题 # ## ### ...
+    const hMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
+    if (hMatch) {
+      const level = hMatch[1].length;
+      const inner = parseInlineMarkdown(hMatch[2]);
+      result.push(`<h${level}>${inner}</h${level}>`);
+      continue;
+    }
+
+    // 无序列表 - item
+    if (/^-\s+/m.test(trimmed) && !/^-\s+$/m.test(trimmed)) {
+      const items = trimmed.split(/\n(?=-\s+)/).map(line => line.replace(/^-\s+/, ''));
+      result.push('<ul>' + items.map(li => '<li>' + parseInlineMarkdown(li) + '</li>').join('') + '</ul>');
+      continue;
+    }
+
+    // 有序列表 1. 2. ...
+    if (/^\d+\.\s+/m.test(trimmed)) {
+      const items = trimmed.split(/\n(?=\d+\.\s+)/).map(line => line.replace(/^\d+\.\s+/, ''));
+      result.push('<ol>' + items.map(li => '<li>' + parseInlineMarkdown(li) + '</li>').join('') + '</ol>');
+      continue;
+    }
+
+    // 引用 > ...
+    if (trimmed.startsWith('> ')) {
+      const inner = parseInlineMarkdown(trimmed.slice(2));
+      result.push('<blockquote>' + inner + '</blockquote>');
+      continue;
+    }
+
+    // 已是 <pre><code> 的块不再包 <p>
+    if (trimmed.startsWith('<pre>')) {
+      result.push(trimmed);
+      continue;
+    }
+
+    // 普通段落：换行转 <br>，内联 Markdown 解析
+    const withBr = block.split('\n').map(line => parseInlineMarkdown(line)).join('<br>\n');
+    result.push('<p>' + withBr + '</p>');
+  }
+  return result.join('\n');
+}
+
+/**
+ * 解析内联 Markdown：** * ` [](url)，并做 HTML 转义
+ */
+function parseInlineMarkdown(s) {
+  if (!s) return '';
+  let t = escapeHtml(s);
+  // 粗体 **...**
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  // 斜体 *...*（避免吃掉 **）
+  t = t.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+  t = t.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
+  // 行内代码 `...`
+  t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Markdown 链接 [text](url)
+  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) => {
+    return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(linkText) + '</a>';
+  });
+  return t;
+}
+
+/**
+ * 判断文本是否包含 Markdown 或图片占位符（用于选择渲染方式）
+ */
+function looksLikeMarkdown(text) {
+  if (!text || typeof text !== 'string') return false;
+  return /^\s*#{1,6}\s+/m.test(text) ||
+    /```[\s\S]*?```/.test(text) ||
+    /\*\*[^*]+\*\*|\*[^*]+\*/.test(text) ||
+    /\{\{IMAGE_\d+\}\}/.test(text) ||
+    /^\s*[-*]\s+/m.test(text) ||
+    /^\s*\d+\.\s+/m.test(text);
+}
+
+/**
+ * 安全地渲染包含链接的文本（防止 XSS）
+ * 若内容像 Markdown（含代码块、标题、占位符等），则用 renderMarkdownToHtml；否则仅处理链接。
+ * @param {string} text - 包含链接的文本（可能包含 Markdown 或 URL）
+ * @param {string} format - 输出格式：'html' 或 'markdown'，默认为 'html'
+ * @param {Array<string>} [images] - 图片数组，用于替换 {{IMAGE_n}}（仅 format='html' 时有效）
+ * @returns {string} 安全的 HTML 字符串
+ */
+function renderTextWithLinks(text, format = 'html', images) {
+  if (!text) return '';
+  
+  if (format === 'html' && looksLikeMarkdown(text)) {
+    return renderMarkdownToHtml(text, images);
+  }
+
+  // 转义 HTML 特殊字符
+  let safeText = escapeHtml(text);
+  
+  if (format === 'html') {
+    // 转换为 HTML 链接
+    safeText = convertLinksToHTML(safeText);
+  } else {
+    safeText = text;
+  }
+  
+  return safeText;
+}
+
+/**
+ * 提取文本中的链接（返回链接数组）
+ * @param {string} text - 要分析的文本
+ * @returns {Array<{url: string, text: string, format: string}>} 链接数组
+ */
+function extractLinksFromText(text) {
+  if (!text) return [];
+  
+  const links = [];
+  
+  // 提取 Markdown 链接
+  let match;
+  const markdownRegex = new RegExp(MARKDOWN_LINK_REGEX);
+  while ((match = markdownRegex.exec(text)) !== null) {
+    links.push({
+      url: match[2],
+      text: match[1],
+      format: 'markdown'
+    });
+  }
+  
+  // 提取 HTML 链接
+  const htmlRegex = new RegExp(HTML_LINK_REGEX);
+  while ((match = htmlRegex.exec(text)) !== null) {
+    links.push({
+      url: match[1],
+      text: match[2],
+      format: 'html'
+    });
+  }
+  
+  // 提取纯 URL
+  const urlRegex = new RegExp(URL_REGEX);
+  while ((match = urlRegex.exec(text)) !== null) {
+    const url = match[1];
+    // 检查是否已经在链接数组中
+    if (!links.some(link => link.url === url)) {
+      links.push({
+        url: url,
+        text: url,
+        format: 'url'
+      });
+    }
+  }
+  
+  return links;
+}
+
+/**
+ * 复制文本到剪贴板（保留链接格式）
+ * @param {string} text - 要复制的文本
+ * @param {string} format - 格式：'markdown' 或 'html'，默认为 'markdown'
+ * @returns {Promise<boolean>} 是否成功复制
+ */
+async function copyTextWithLinks(text, format = 'markdown') {
+  if (!text) return false;
+  
+  try {
+    let textToCopy = text;
+    
+    if (format === 'markdown') {
+      // 确保链接是 Markdown 格式
+      textToCopy = convertLinksToMarkdown(text);
+    } else {
+      // HTML 格式：保持原样
+      textToCopy = text;
+    }
+    
+    // 使用 Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(textToCopy);
+      return true;
+    } else {
+      // 降级方案：使用传统的复制方法
+      const textArea = document.createElement('textarea');
+      textArea.value = textToCopy;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return success;
+    }
+  } catch (error) {
+    console.error('复制失败:', error);
+    return false;
+  }
 }

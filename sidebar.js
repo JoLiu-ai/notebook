@@ -9,6 +9,8 @@ let sidebarPosition = 'right'; // 'left' or 'right'
 let autoSaveTimer = null; // 自动保存定时器
 let isTextExpanded = false; // 文本内容展开状态
 
+const DANGEROUS_CLEAR_TOKEN = 'CLEAR';
+
 // DOM 元素
 const sidebarContainer = document.getElementById('sidebarContainer');
 const resizeHandle = document.getElementById('resizeHandle');
@@ -29,6 +31,7 @@ const cancelBtn = document.getElementById('cancelBtn');
 const saveNoteBtn = document.getElementById('saveNoteBtn');
 const deleteNoteBtn = document.getElementById('deleteNoteBtn');
 const editNoteBtn = document.getElementById('editNoteBtn');
+const copyNoteBtn = document.getElementById('copyNoteBtn');
 const closeViewBtn = document.getElementById('closeViewBtn');
 const downloadModal = document.getElementById('downloadModal');
 const downloadModalTitle = document.getElementById('downloadModalTitle');
@@ -142,6 +145,7 @@ chrome.runtime.onMessage.addListener((message) => {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   await backupManager.init(); // 初始化备份管理器
+  await enforceBackupDefaults(); // 强制默认自动备份策略
   await loadNotes();
   await cloudServices.init(); // 初始化云服务
   setupEventListeners();
@@ -179,6 +183,51 @@ async function saveSettings() {
   } catch (error) {
     console.error('保存设置失败:', error);
   }
+}
+
+async function hasBackupFolderConfigured() {
+  if (backupManager.backupFolderHandle) {
+    return true;
+  }
+  const config = await chrome.storage.local.get(['backupFolderPath']);
+  return Boolean(config.backupFolderPath);
+}
+
+async function ensureBackupFolderConfigured(tipMessage) {
+  const configured = await hasBackupFolderConfigured();
+  if (configured) {
+    return true;
+  }
+
+  showNotification(tipMessage || '请先选择备份文件夹，避免后续数据丢失', true);
+
+  // 避免首次弹窗遮挡备份设置弹窗，导致用户感觉“点击无反应”
+  if (firstLaunchModal) {
+    firstLaunchModal.classList.remove('show');
+  }
+
+  await openBackupSettingsModal();
+  return false;
+}
+
+async function enforceBackupDefaults() {
+  const shouldEnableAutoBackup = !backupManager.autoBackupEnabled;
+  const shouldResetFrequency = !backupManager.backupFrequency || backupManager.backupFrequency === 'manual';
+
+  if (!shouldEnableAutoBackup && !shouldResetFrequency) {
+    return;
+  }
+
+  backupManager.autoBackupEnabled = true;
+  if (shouldResetFrequency) {
+    backupManager.backupFrequency = 'every-save';
+  }
+
+  await backupManager.saveSettings();
+  await chrome.storage.local.set({
+    autoBackupEnabled: true,
+    backupFrequency: backupManager.backupFrequency
+  });
 }
 
 // 更新侧边栏位置
@@ -378,6 +427,28 @@ function setupEventListeners() {
       editNote(noteId);
     });
   }
+  if (copyNoteBtn) {
+    copyNoteBtn.addEventListener('click', async () => {
+      if (!currentViewingNoteId) return;
+      const note = await storage.getNote(currentViewingNoteId);
+      if (note && note.text) {
+        const success = await copyTextWithLinks(note.text, 'markdown');
+        if (success) {
+          if (typeof errorHandler !== 'undefined') {
+            errorHandler.showSuccess('已复制到剪贴板');
+          } else {
+            alert('已复制到剪贴板');
+          }
+        } else {
+          if (typeof errorHandler !== 'undefined') {
+            errorHandler.showError('复制失败');
+          } else {
+            alert('复制失败');
+          }
+        }
+      }
+    });
+  }
   if (closeViewBtn) {
     closeViewBtn.addEventListener('click', closeViewNoteModal);
   }
@@ -482,11 +553,29 @@ function setupEventListeners() {
 
   // 文档库操作
   clearAllBtn.addEventListener('click', async () => {
-    if (confirm('确定要清空所有数据吗？此操作不可恢复！')) {
-      await chrome.storage.local.clear();
+    try {
+      const notes = await storage.getAllNotes();
+      if (notes.length === 0) {
+        showNotification('当前没有可清空的笔记', false);
+        return;
+      }
+
+      const confirmToken = window.prompt(
+        `危险操作：这将删除所有笔记。\n输入 ${DANGEROUS_CLEAR_TOKEN} 以确认。`
+      );
+      if (confirmToken !== DANGEROUS_CLEAR_TOKEN) {
+        showNotification('已取消清空操作', true);
+        return;
+      }
+
+      const backupResult = await backupManager.createBackup(notes, false);
+      await storage.clearAllNotes();
       await loadNotes();
       loadLibraryView();
-      alert('所有数据已清空');
+      showNotification(`所有笔记已清空。清空前备份：${backupResult}`, false);
+    } catch (error) {
+      console.error('清空数据失败:', error);
+      showNotification(`清空失败：${error.message}`, true);
     }
   });
 
@@ -595,13 +684,23 @@ function setupEventListeners() {
 
   // 首次启动相关事件
   if (firstLaunchRestoreBtn) {
-    firstLaunchRestoreBtn.addEventListener('click', () => {
+    firstLaunchRestoreBtn.addEventListener('click', async () => {
+      const ready = await ensureBackupFolderConfigured('首次使用请先配置备份文件夹，再进行恢复或开始使用');
+      if (!ready) {
+        return;
+      }
       closeFirstLaunchModal();
       openRestoreModal();
     });
   }
   if (firstLaunchSkipBtn) {
-    firstLaunchSkipBtn.addEventListener('click', closeFirstLaunchModal);
+    firstLaunchSkipBtn.addEventListener('click', async () => {
+      const ready = await ensureBackupFolderConfigured('首次使用前请先配置备份文件夹，确保后续变更目录后数据可恢复');
+      if (!ready) {
+        return;
+      }
+      closeFirstLaunchModal();
+    });
   }
   if (emptyStateRestoreBtn) {
     emptyStateRestoreBtn.addEventListener('click', openRestoreModal);
@@ -861,6 +960,66 @@ async function loadCurrentPageInfo() {
   }
 }
 
+async function requestCurrentPageCapture({
+  silent = false,
+  overwriteText = false,
+  includeImages = false
+} = {}) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) {
+      throw new Error('未找到当前标签页');
+    }
+
+    const response = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('捕获超时'));
+      }, 2000);
+
+      chrome.tabs.sendMessage(tab.id, { action: 'capturePage' }, (result) => {
+        clearTimeout(timer);
+        if (chrome.runtime && chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(result || null);
+      });
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || '无法捕获页面内容');
+    }
+
+    if (response.text && (overwriteText || !noteText.value.trim())) {
+      noteText.value = response.text;
+    }
+
+    if (includeImages && Array.isArray(response.images) && response.images.length > 0) {
+      response.images.forEach((imageData) => {
+        const file = base64ToFile(imageData, 'screenshot.png');
+        selectedImages.push(file);
+        addImagePreview(file);
+      });
+    }
+
+    return true;
+  } catch (error) {
+    if (!silent) {
+      alert('无法捕获页面内容，请确保页面已完全加载');
+    }
+    console.error('捕获页面失败:', error);
+    return false;
+  }
+}
+
+function autoFillCurrentPageContent() {
+  return requestCurrentPageCapture({
+    silent: true,
+    overwriteText: false,
+    includeImages: false
+  });
+}
+
 // 加载笔记列表
 async function loadNotes(searchQuery = '') {
   const notes = await storage.searchNotes(searchQuery);
@@ -1052,7 +1211,7 @@ async function openAddNoteModal(note = null) {
     currentViewingNoteId = note.id;
   } else {
     // 新建模式
-    loadCurrentPageInfo();
+    await loadCurrentPageInfo();
     noteText.value = '';
     if (noteCategory) {
       noteCategory.value = '';
@@ -1064,6 +1223,9 @@ async function openAddNoteModal(note = null) {
     saveNoteBtn.textContent = '保存';
     document.querySelector('#addNoteModal .modal-header h2').textContent = '添加笔记';
     currentViewingNoteId = null;
+
+    // 自动填充当前页面正文（仅在文本为空时填充，不覆盖用户输入）
+    autoFillCurrentPageContent();
   }
   
   // 加载分类列表
@@ -1349,9 +1511,9 @@ async function autoSaveNote() {
   }
 }
 
-// 查看笔记详情
+// 查看笔记详情（拉取完整笔记含图片，以支持正文内图片占位符渲染）
 async function viewNote(noteId) {
-  const note = await storage.getNote(noteId);
+  const note = await storage.getNoteWithImages(noteId) || await storage.getNote(noteId);
   if (!note) return;
 
   currentViewingNoteId = noteId;
@@ -1401,16 +1563,27 @@ async function viewNote(noteId) {
     viewBody.appendChild(metaDiv);
   }
 
-  // 文本
+  // 文本（支持 Markdown：代码块、标题、加粗/斜体、列表、链接及正文内图片占位符）
   if (note.text) {
     const textDiv = document.createElement('div');
     textDiv.className = 'note-detail-text';
-    textDiv.textContent = note.text;
+    const htmlContent = renderTextWithLinks(note.text, 'html', note.images);
+    textDiv.innerHTML = htmlContent;
+    // 确保链接在新标签页打开
+    const links = textDiv.querySelectorAll('a');
+    links.forEach(link => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    });
     viewBody.appendChild(textDiv);
   }
 
-  // 图片
-  if (note.images && note.images.length > 0) {
+  // 图片（正文无占位符时才显示独立图片区，避免与正文内图片重复）
+  const hasInlineImages = note.text && /\{\{IMAGE_\d+\}\}/.test(note.text);
+  if (note.images && note.images.length > 0 && !hasInlineImages) {
     const imagesDiv = document.createElement('div');
     imagesDiv.className = 'note-detail-images';
     note.images.forEach((imageData, index) => {
@@ -1496,30 +1669,11 @@ function addImagePreview(file) {
 
 // 捕获当前页面
 async function captureCurrentPage() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    chrome.tabs.sendMessage(tab.id, { action: 'capturePage' }, async (response) => {
-      if (response && response.success) {
-        if (response.text) {
-          noteText.value = response.text;
-        }
-        
-        if (response.images && response.images.length > 0) {
-          response.images.forEach(imageData => {
-            const file = base64ToFile(imageData, 'screenshot.png');
-            selectedImages.push(file);
-            addImagePreview(file);
-          });
-        }
-      } else {
-        alert('无法捕获页面内容，请确保页面已完全加载');
-      }
-    });
-  } catch (error) {
-    console.error('捕获页面失败:', error);
-    alert('捕获页面失败');
-  }
+  await requestCurrentPageCapture({
+    silent: false,
+    overwriteText: true,
+    includeImages: true
+  });
 }
 
 // 文件转 base64
@@ -1597,8 +1751,12 @@ async function importData() {
             // 合并模式：保留现有笔记
             existingNotes = await storage.getAllNotes();
           } else {
-            // 替换模式：清空现有数据
-            await chrome.storage.local.clear();
+            // 替换模式：先做应急备份，再清空笔记数据
+            const notesBeforeReplace = await storage.getAllNotes();
+            if (notesBeforeReplace.length > 0) {
+              await backupManager.createBackup(notesBeforeReplace, false);
+            }
+            await storage.clearAllNotes();
             existingNotes = [];
           }
 
@@ -2204,6 +2362,12 @@ async function checkFirstLaunch() {
       if (emptyStateRestore) {
         emptyStateRestore.style.display = 'block';
       }
+
+      const hasBackupFolder = await hasBackupFolderConfigured();
+      if (!hasBackupFolder) {
+        showNotification('首次使用请先配置备份文件夹，避免后续因目录变化导致数据不可见', true);
+        await openBackupSettingsModal();
+      }
     } else if (notes.length === 0) {
       // 如果已经看过提示但数据为空，显示恢复按钮
       if (emptyStateRestore) {
@@ -2258,11 +2422,13 @@ async function loadBackupSettings() {
     'backupFolderPath'
   ]);
 
+  const normalizedFrequency = config.backupFrequency === 'manual' ? 'every-save' : (config.backupFrequency || 'every-save');
+
   if (autoBackupEnabled) {
-    autoBackupEnabled.checked = config.autoBackupEnabled || false;
+    autoBackupEnabled.checked = config.autoBackupEnabled !== false;
   }
   if (backupFrequency) {
-    backupFrequency.value = config.backupFrequency || 'every-save';
+    backupFrequency.value = normalizedFrequency;
   }
   if (cloudBackupEnabled) {
     cloudBackupEnabled.checked = config.cloudBackupEnabled || false;
@@ -2331,21 +2497,41 @@ async function selectBackupFolder() {
  */
 async function saveBackupSettings() {
   try {
-    backupManager.autoBackupEnabled = autoBackupEnabled ? autoBackupEnabled.checked : false;
-    backupManager.backupFrequency = backupFrequency ? backupFrequency.value : 'every-save';
+    const hasFolder = await hasBackupFolderConfigured();
+    if (!hasFolder) {
+      showNotification('请先选择备份文件夹，再保存设置', true);
+      await selectBackupFolder();
+      return;
+    }
+
+    const requestedFrequency = backupFrequency ? backupFrequency.value : 'every-save';
+
+    // 强制保护策略：始终开启自动备份，且不允许手动模式
+    backupManager.autoBackupEnabled = true;
+    backupManager.backupFrequency = requestedFrequency === 'manual' ? 'every-save' : requestedFrequency;
     backupManager.cloudBackupEnabled = cloudBackupEnabled ? cloudBackupEnabled.checked : false;
-    
+
+    if (autoBackupEnabled) {
+      autoBackupEnabled.checked = true;
+    }
+    if (backupFrequency) {
+      backupFrequency.value = backupManager.backupFrequency;
+    }
+
     await backupManager.saveSettings();
-    
+
     // 保存到 chrome.storage
     await chrome.storage.local.set({
       autoBackupEnabled: backupManager.autoBackupEnabled,
       backupFrequency: backupManager.backupFrequency,
       cloudBackupEnabled: backupManager.cloudBackupEnabled
     });
-    
-    showNotification('备份设置已保存', false);
+
+    showNotification('备份设置已保存（自动备份已强制启用）', false);
     closeBackupSettingsModal();
+
+    // 备份配置完成后，自动结束首次引导流程
+    closeFirstLaunchModal();
   } catch (error) {
     console.error('保存备份设置失败:', error);
     showNotification('保存设置失败: ' + error.message, true);
@@ -2543,7 +2729,11 @@ async function handleRestoreConfirm() {
     if (mergeMode) {
       existingNotes = await storage.getAllNotes();
     } else {
-      await chrome.storage.local.clear();
+      const notesBeforeReplace = await storage.getAllNotes();
+      if (notesBeforeReplace.length > 0) {
+        await backupManager.createBackup(notesBeforeReplace, false);
+      }
+      await storage.clearAllNotes();
       existingNotes = [];
     }
     
@@ -2616,6 +2806,11 @@ async function handleRestoreConfirm() {
 async function triggerAutoBackup() {
   try {
     if (!backupManager.shouldBackup()) {
+      return;
+    }
+
+    const hasFolder = await hasBackupFolderConfigured();
+    if (!hasFolder) {
       return;
     }
     

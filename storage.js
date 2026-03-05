@@ -142,6 +142,39 @@ class NoteStorage {
   }
 
   /**
+   * 清空所有笔记（仅清理笔记数据，不影响其他配置）
+   * @returns {Promise<void>}
+   * @throws {Error} 如果清空失败
+   */
+  async clearAllNotes() {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const notes = await this.getAllNotes();
+
+        // 清理每条笔记关联图片
+        const imgStorage = await this.getImageStorage();
+        if (imgStorage) {
+          for (const note of notes) {
+            if (note?.id) {
+              await imgStorage.deleteImagesByNoteId(note.id);
+            }
+          }
+        }
+
+        chrome.storage.local.set({ [this.STORAGE_KEY]: [] }, () => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve();
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
    * 获取笔记（包含图片）
    * @param {string} noteId - 笔记 ID
    * @returns {Promise<Object|null>} 笔记对象，如果不存在则返回 null
@@ -233,6 +266,7 @@ class BackupManager {
     this.cloudBackupEnabled = false;
     this.lastBackupDate = null;
     this.handleStorageKey = 'backupFolderHandle';
+    this.defaultDownloadSubfolder = 'knowledge-notebook-backups';
   }
 
   /**
@@ -358,6 +392,52 @@ class BackupManager {
     return requested === 'granted';
   }
 
+  async downloadBackupToDefaultFolder(blob, filename) {
+    const targetFilename = `${this.defaultDownloadSubfolder}/${filename}`;
+
+    if (typeof chrome !== 'undefined' && chrome.downloads && chrome.downloads.download) {
+      const url = URL.createObjectURL(blob);
+      await new Promise((resolve, reject) => {
+        chrome.downloads.download(
+          {
+            url,
+            filename: targetFilename,
+            saveAs: false,
+            conflictAction: 'uniquify'
+          },
+          (downloadId) => {
+            URL.revokeObjectURL(url);
+            if (chrome.runtime && chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            if (!downloadId) {
+              reject(new Error('下载任务创建失败'));
+              return;
+            }
+            resolve(downloadId);
+          }
+        );
+      });
+      return `已下载到默认目录: ${targetFilename}`;
+    }
+
+    // 兼容不支持 downloads API 的场景
+    if (typeof document !== 'undefined') {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = targetFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return `已下载: ${filename}`;
+    }
+
+    throw new Error('当前环境不支持下载备份文件');
+  }
+
   /**
    * 创建备份文件
    * @param {Array<Object>} notes - 笔记数组
@@ -409,21 +489,14 @@ class BackupManager {
         }
       }
 
-      // 如果没有配置文件夹，使用下载方式
+      // 如果没有配置文件夹，下载到默认目录子文件夹
       const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const downloadResult = await this.downloadBackupToDefaultFolder(blob, filename);
 
       this.lastBackupDate = new Date().toISOString();
       await this.saveSettings();
 
-      return `已下载: ${filename}`;
+      return downloadResult;
     } catch (error) {
       console.error('创建备份失败:', error);
       throw error;

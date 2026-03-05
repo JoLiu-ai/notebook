@@ -200,14 +200,18 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         }
       }
 
-      // 处理链接
+      // 处理链接（保留 Markdown 格式）
       if (info.linkUrl) {
         note.url = info.linkUrl;
         if (info.linkText) {
           note.title = info.linkText;
-          note.text = (note.text ? note.text + '\n\n' : '') + `链接: ${info.linkUrl}`;
+          // 使用 Markdown 格式保留链接
+          const linkMarkdown = `[${info.linkText}](${info.linkUrl})`;
+          note.text = (note.text ? note.text + '\n\n' : '') + linkMarkdown;
         } else {
           note.title = info.linkUrl;
+          // 如果没有链接文本，直接使用 URL
+          note.text = (note.text ? note.text + '\n\n' : '') + info.linkUrl;
         }
       }
 

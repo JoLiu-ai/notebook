@@ -163,6 +163,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <div class="modal-actions">
+          <button class="btn-secondary modal-icon-btn" id="copyNoteBtn" title="复制" aria-label="复制">📋</button>
           <button class="btn-secondary modal-icon-btn" id="editNoteBtn" title="编辑" aria-label="编辑">✎</button>
           <button class="btn-danger modal-icon-btn" id="deleteNoteBtn" title="删除" aria-label="删除">🗑</button>
           <button class="btn-secondary modal-icon-btn" id="closeViewBtn" title="关闭" aria-label="关闭">×</button>
@@ -258,7 +259,6 @@
             <option value="every-save">每次保存</option>
             <option value="daily">每天一次</option>
             <option value="weekly">每周一次</option>
-            <option value="manual">仅手动备份</option>
           </select>
         </div>
 
@@ -331,13 +331,14 @@
       </div>
       <div class="modal-body">
         <p>这是您首次使用本扩展，或者检测到没有已保存的笔记。</p>
+        <p>首次使用需先配置备份文件夹，后续改目录或重装时可恢复数据。</p>
         <p>如果您之前使用过本扩展并创建了备份，可以立即恢复数据：</p>
         <div style="margin-top: 16px;">
           <button class="btn-primary" id="firstLaunchRestoreBtn">从备份恢复</button>
-          <button class="btn-secondary" id="firstLaunchSkipBtn" style="margin-left: 8px;">跳过，开始使用</button>
+          <button class="btn-secondary" id="firstLaunchSkipBtn" style="margin-left: 8px;">配置后开始使用</button>
         </div>
         <div class="form-hint" style="margin-top: 16px;">
-          <strong>提示：</strong>建议定期备份数据，避免卸载扩展后数据丢失。可以在"备份设置"中配置自动备份。
+          <strong>提示：</strong>已强制启用自动备份。请先选择本地备份文件夹。
         </div>
       </div>
     </div>
